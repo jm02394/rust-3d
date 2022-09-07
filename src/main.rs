@@ -1,5 +1,6 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
+#![allow(dead_code)]
 
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
@@ -11,7 +12,6 @@ use winit_input_helper::WinitInputHelper;
 
 const WIDTH: u32 = 320;
 const HEIGHT: u32 = 240;
-const BOX_SIZE: i16 = 64;
 
 #[derive(PartialEq)]
 struct Vec2 {
@@ -52,12 +52,20 @@ impl Vec3 {
     }
 }
 
+struct Tri {
+    a: Vec3,
+    b: Vec3,
+    c: Vec3,
+    color: [i32; 4],
+}
+
+struct Prim {
+    tris: Vec<Tri>,
+}
+
 /// Representation of the application state. In this example, a box will bounce around the screen.
 struct World {
-    box_x: i16,
-    box_y: i16,
-    velocity_x: i16,
-    velocity_y: i16,
+    tris: Vec<Tri>,
 }
 
 fn main() -> Result<(), Error> {
@@ -119,24 +127,18 @@ impl World {
     /// Create a new `World` instance that can draw a moving box.
     fn new() -> Self {
         Self {
-            box_x: 24,
-            box_y: 16,
-            velocity_x: 2,
-            velocity_y: 1,
+            tris: vec![Tri { 
+                a: Vec3 { x: 0., y: 0., z: 0. },
+                b: Vec3 { x: 1., y: 0., z: 0. },
+                c: Vec3 { x: 1., y: 1., z: 0. },
+                color: [0, 0, 0, 255],
+            }]
         }
     }
 
     /// Update the `World` internal state; bounce the box around the screen.
     fn update(&mut self) {
-        if self.box_x <= 0 || self.box_x + BOX_SIZE > WIDTH as i16 {
-            self.velocity_x *= -1;
-        }
-        if self.box_y <= 0 || self.box_y + BOX_SIZE > HEIGHT as i16 {
-            self.velocity_y *= -1;
-        }
-
-        self.box_x += self.velocity_x;
-        self.box_y += self.velocity_y;
+        todo!();
     }
 
     /// Draw the `World` state to the frame buffer.
