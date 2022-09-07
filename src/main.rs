@@ -14,26 +14,26 @@ const HEIGHT: u32 = 240;
 const BOX_SIZE: i16 = 64;
 
 #[derive(PartialEq)]
-struct Point {
+struct Vec2 {
     x: f32,
     y: f32,
 }
 
 #[derive(PartialEq)]
-struct Coord {
+struct Vec3 {
     x: f32,
     y: f32,
     z: f32,
 }
 
-impl Coord {
-    fn project(&self, c: Coord, r: Coord, e: Coord) -> Point  {
+impl Vec3 {
+    fn project(&self, c: Vec3, r: Vec3, e: Vec3) -> Vec2 {
         let xp = self.x - c.x;
         let yp = -(self.y - c.y);
         let zp = self.z - c.z;
 
         let (dx, dy, dz) = match r {
-            Coord { x: 0.0, y: 0.0, z: 0.0 } => (xp, yp, zp),
+            Vec3 { x: 0., y: 0., z: 0. } => (xp, yp, zp),
             _ => (
                 r.y.cos() * (r.z.sin() * yp + r.z.cos() * xp) - r.y.sin() * zp,
                 r.x.sin() * (r.y.cos() * zp + r.y.sin() * (r.z.sin() * yp + r.z.cos()  * xp)) + r.x.cos() * (r.z.cos() * yp - r.z.sin() * xp),
@@ -44,7 +44,11 @@ impl Coord {
         let bx = e.z / dz * dx + e.x;
         let by = e.z / dz * dy + e.y;
         
-        Point { x: (1.0 + bx).floor(), y: (1.0 + by).floor() } // Point { x: (width / 2 + bx).floor(), y: (height / 2 + by).floor() }
+        Vec2 { x: (WIDTH as f32 / 2. + bx).floor(), y: (HEIGHT as f32 / 2. + by).floor() }
+    }
+
+    fn process(&self) -> Vec2 {
+        self.project(Vec3 { x: 0., y: 0., z: -2.}, Vec3 { x: 0., y: 0., z: 0.}, Vec3 { x: 0., y: 0., z: 1000.})
     }
 }
 
@@ -143,15 +147,12 @@ impl World {
             let x = (i % WIDTH as usize) as i16;
             let y = (i / WIDTH as usize) as i16;
 
-            let inside_the_box = x >= self.box_x
-                && x < self.box_x + BOX_SIZE
-                && y >= self.box_y
-                && y < self.box_y + BOX_SIZE;
+            let pos = (Vec3 { x: 0., y: 0., z: 0. }).process();
 
-            let rgba = if inside_the_box {
-                [0x5e, 0x48, 0xe8, 0xff]
+            let rgba = if x as f32 == pos.x && y as f32 == pos.y {
+                [0, 0, 0, 255]
             } else {
-                [0x48, 0xb2, 0xe8, 0xff]
+                [255, 255, 255, 255]
             };
 
             pixel.copy_from_slice(&rgba);
