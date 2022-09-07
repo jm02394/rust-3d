@@ -20,8 +20,18 @@ struct Vec2 {
 }
 
 impl Vec2 {
-    fn within_bounds(&self, a: Vec2, b: Vec2, c: Vec2) -> bool {
-        
+    fn line(&self, p2: Vec2) {
+        let out = vec![self.clone()];
+        let rise = (p2.x - self.x) / (p2.y - self.y);
+        let mut c = 0;
+
+        while self.y <= p2.y {
+            for i in 0..rise {
+                out.add(Vec2 { x: floor(self.x + c), y: floor(self.y + c*rise + i)})
+            }
+
+            c += 1;
+        }
     }
 }
 
@@ -58,11 +68,21 @@ impl Vec3 {
     }
 }
 
-struct Tri {
-    a: Vec3,
-    b: Vec3,
-    c: Vec3,
-    color: [i32; 4],
+type RGBA = [i32; 4];
+
+struct Tri<T> {
+    a: T,
+    b: T,
+    c: T,
+    color: RGBA,
+}
+
+impl Tri<Vec2> {
+    fn within(i: Vec2) {
+        fn eq1(x: i16) {
+
+        }
+    }
 }
 
 struct Prim {
