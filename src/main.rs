@@ -19,6 +19,12 @@ struct Vec2 {
     y: f32,
 }
 
+impl Vec2 {
+    fn within_bounds(&self, a: Vec2, b: Vec2, c: Vec2) -> bool {
+        
+    }
+}
+
 #[derive(PartialEq)]
 struct Vec3 {
     x: f32,
