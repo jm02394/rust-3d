@@ -61,7 +61,7 @@ fn get_cube() -> Prim {
 }
 
 fn px(x: usize, y: usize, frame: &mut [u8]) {
-    if x > WIDTH as usize || y > HEIGHT as usize {
+    if x >= WIDTH as usize || y >= HEIGHT as usize {
         return
     }
     let i = x * 4 + y * WIDTH as usize * 4;
