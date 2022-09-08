@@ -69,6 +69,7 @@ fn px(x: usize, y: usize, frame: &mut [u8]) {
 }
 
 fn draw_line(p1: Vec2, p2: Vec2, frame: &mut [u8]) {
+    // Brezhnev
     let dx = (p2.x as i32 - p1.x as i32).abs();
     let sx: i32 = if p1.x < p2.x { 1 } else { -1 };
     let dy = -(p2.y as i32 - p1.y as i32).abs();
@@ -93,6 +94,36 @@ fn draw_line(p1: Vec2, p2: Vec2, frame: &mut [u8]) {
             y0 = y0 + sy;
         }
     }
+
+    // shittier
+    /*let mut dx = p2.x as i32 - p1.x as i32;
+    let mut dy = p2.y as i32 - p1.y as i32;
+
+    if dx == 0 || dy == 0 {
+        return
+    }
+
+    let step: i32;
+
+    if dx.abs() >= dy.abs() {
+        step = dx.abs();
+    } else {
+        step = dy.abs();
+    }
+
+    dx = dx / step;
+    dy = dy / step;
+
+    let (mut x, mut y) = (p1.x as i32, p1.y as i32);
+    let mut i = 1;
+
+    while i <= step {
+        px(x as usize, y as usize, frame);
+
+        x += dx;
+        y += dy;
+        i += 1;
+    }*/
 }
 
 fn draw_tri(i: &Tri, cam: &Camera, frame: &mut [u8]) {
@@ -126,6 +157,10 @@ struct Vec2 {
 }
 
 impl Vec2 {
+    fn new(x: i32, y: i32) -> Self {
+        Self { x: x as usize, y: y as usize }
+    }
+
     /*fn line(&self, p2: Vec2, frame: &mut [u8]) {
         let slope = (p2.y - self.y) / (p2.x - self.x);
 
@@ -328,8 +363,7 @@ impl World {
             pixel.copy_from_slice(&rgba);
         }
         
-        //Vec2 { x: 0., y: 0. }.line(Vec2 { x: 10., y: 30. }, frame);
-        //line(Vec2 { x: (WIDTH/2) as usize, y: (HEIGHT/2) as usize }, Vec2 { x: 10, y: 30 }, frame);
         draw_prim(&get_cube(), &Camera::new(Vec3::new(self.c * 0.001, self.c * 0.002, -2.), Vec3::new_i(0, 0, 0), Vec3::new_i(0, 0, 200)), frame);
+        //draw_line(Vec2::new(WIDTH as i32, HEIGHT as i32), Vec2::new(0, 0), frame);
     }
 }
