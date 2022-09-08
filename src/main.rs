@@ -10,29 +10,77 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-const WIDTH: u32 = 320;
-const HEIGHT: u32 = 240;
+const WIDTH: u32 = 200;
+const HEIGHT: u32 = 200;
 
-#[derive(PartialEq)]
+fn px(x: usize, y: usize, frame: &mut [u8]) {
+    let i = x * 4 + y * WIDTH as usize * 4;
+    frame[i..i + 4].copy_from_slice(&[0, 0, 0, 255]);
+}
+
+fn line(p1: Vec2, p2: Vec2, frame: &mut [u8]) {
+    let dx = (p2.x as i16 - p1.x as i16).abs();
+    let sx: i16 = if p1.x < p2.x { 1 } else { -1 };
+    let dy = -(p2.y as i16 - p1.y as i16).abs();
+    let sy: i16 = if p1.y < p2.y { 1 } else { -1 };
+    let mut err = dx + dy;
+
+    let (mut x0, mut y0) = (p1.x as i16, p1.y as i16);
+
+    loop {
+        px(x0 as usize, y0 as usize, frame);
+        if x0 == p2.x as i16 && y0 == p2.y as i16 { break };
+        let e2 = 2 * err;
+
+        if e2 >= dy {
+            if x0 == p2.x as i16 { break };
+            err = err + dy;
+            x0 = x0 + sx;
+        }
+        if e2 <= dy {
+            if y0 == p2.x as i16 { break };
+            err = err + dx;
+            y0 = y0 + sy;
+        }
+    }
+}
+
+#[derive(PartialEq, Clone, Copy)]
 struct Vec2 {
-    x: f32,
-    y: f32,
+    x: usize,
+    y: usize,
 }
 
 impl Vec2 {
-    fn line(&self, p2: Vec2) {
-        let out = vec![self.clone()];
-        let rise = (p2.x - self.x) / (p2.y - self.y);
-        let mut c = 0;
+    /*fn line(&self, p2: Vec2, frame: &mut [u8]) {
+        let slope = (p2.y - self.y) / (p2.x - self.x);
 
-        while self.y <= p2.y {
-            for i in 0..rise {
-                out.add(Vec2 { x: floor(self.x + c), y: floor(self.y + c*rise + i)})
+        if (p2.y - self.y).abs() > (p2.x - self.x).abs() {
+            if self.x < p2.x {
+                for x in 0..(self.x - p2.x) as u16 {
+                    let y = slope * (x as f32 - p2.x) + p2.y;
+                    px(x as usize, y as usize, frame);
+                }
+            } else {
+                for x in 0..(p2.x - self.x) as u16 {
+                    let y = slope * (x as f32 - self.x) + self.y;
+                    px(x as usize, y as usize, frame);
+                }
             }
-
-            c += 1;
+        } else {
+            if self.y < p2.y {
+                for y in 0..(self.x - p2.x) as u16 {
+                    let x = slope * (y as f32 - p2.x) + p2.y;
+                    px(x as usize, y as usize, frame);
+                }
+            } else {
+                for y in 0..(p2.x - self.x) as u16 {
+                    let x = slope * (y as f32 - self.x) + self.y;
+                    px(x as usize, y as usize, frame);
+                }
+            }
         }
-    }
+    }*/
 }
 
 #[derive(PartialEq)]
@@ -60,7 +108,7 @@ impl Vec3 {
         let bx = e.z / dz * dx + e.x;
         let by = e.z / dz * dy + e.y;
         
-        Vec2 { x: (WIDTH as f32 / 2. + bx).floor(), y: (HEIGHT as f32 / 2. + by).floor() }
+        Vec2 { x: (WIDTH as f32 / 2. + bx).floor() as usize, y: (HEIGHT as f32 / 2. + by).floor() as usize }
     }
 
     fn process(&self) -> Vec2 {
@@ -70,19 +118,22 @@ impl Vec3 {
 
 type RGBA = [i32; 4];
 
-struct Tri<T> {
-    a: T,
-    b: T,
-    c: T,
+struct Tri2 {
+    a: Vec2,
+    b: Vec2,
+    c: Vec2,
     color: RGBA,
 }
 
-impl Tri<Vec2> {
-    fn within(i: Vec2) {
-        fn eq1(x: i16) {
+impl Tri2 {
+    
+}
 
-        }
-    }
+struct Tri {
+    a: Vec3,
+    b: Vec3,
+    c: Vec3,
+    color: RGBA,
 }
 
 struct Prim {
@@ -158,13 +209,13 @@ impl World {
                 b: Vec3 { x: 1., y: 0., z: 0. },
                 c: Vec3 { x: 1., y: 1., z: 0. },
                 color: [0, 0, 0, 255],
-            }]
+            }],
         }
     }
 
     /// Update the `World` internal state; bounce the box around the screen.
     fn update(&mut self) {
-        todo!();
+        // fuck yourself
     }
 
     /// Draw the `World` state to the frame buffer.
@@ -172,18 +223,25 @@ impl World {
     /// Assumes the default texture format: `wgpu::TextureFormat::Rgba8UnormSrgb`
     fn draw(&self, frame: &mut [u8]) {
         for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
-            let x = (i % WIDTH as usize) as i16;
+            /*let x = (i % WIDTH as usize) as i16;
             let y = (i / WIDTH as usize) as i16;
 
             let pos = (Vec3 { x: 0., y: 0., z: 0. }).process();
 
-            let rgba = if x as f32 == pos.x && y as f32 == pos.y {
+            Vec2 { x: 0., y: 0. }.line(Vec2 { x: 10., y: 30. }, frame);
+
+            let rgba = if self.line1.contains(&Vec2 { x: x as f32, y: y as f32 }) {
                 [0, 0, 0, 255]
             } else {
                 [255, 255, 255, 255]
-            };
+            };*/
+
+            let rgba = [255, 255, 255, 255];
 
             pixel.copy_from_slice(&rgba);
         }
+        
+        //Vec2 { x: 0., y: 0. }.line(Vec2 { x: 10., y: 30. }, frame);
+        line(Vec2 { x: (WIDTH/2) as usize, y: (HEIGHT/2) as usize }, Vec2 { x: 10, y: 30 }, frame);
     }
 }
