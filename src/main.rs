@@ -60,81 +60,92 @@ fn get_cube() -> Prim {
     ] }
 }
 
-fn px(x: usize, y: usize, frame: &mut [u8]) {
-    if x >= WIDTH as usize || y >= HEIGHT as usize {
-        return
-    }
-    let i = x * 4 + y * WIDTH as usize * 4;
-    frame[i..i + 4].copy_from_slice(&[0, 0, 0, 255]);
+struct Renderer<'a> {
+    cam: Camera,
+    frame: &'a mut [u8],
 }
 
-fn draw_line(p1: Vec2, p2: Vec2, frame: &mut [u8]) {
-    // Brezhnev
-    let dx = (p2.x as i32 - p1.x as i32).abs();
-    let sx: i32 = if p1.x < p2.x { 1 } else { -1 };
-    let dy = -(p2.y as i32 - p1.y as i32).abs();
-    let sy: i32 = if p1.y < p2.y { 1 } else { -1 };
-    let mut err = dx + dy;
+impl<'a> Renderer<'a> {
+    fn new(cam: Camera, frame: &mut [u8]) -> Self {
+        Self { cam, frame }
+    }
 
-    let (mut x0, mut y0) = (p1.x as i32, p1.y as i32);
-
-    loop {
-        px(x0 as usize, y0 as usize, frame);
-        if x0 == p2.x as i32 && y0 == p2.y as i32 { break };
-        let e2 = 2 * err;
-
-        if e2 >= dy {
-            if x0 == p2.x as i32 { break };
-            err = err + dy;
-            x0 = x0 + sx;
+    fn px(&self, x: usize, y: usize) {
+        if x >= WIDTH as usize || y >= HEIGHT as usize {
+            return
         }
-        if e2 <= dy {
-            if y0 == p2.x as i32 { break };
-            err = err + dx;
-            y0 = y0 + sy;
+        let i = x * 4 + y * WIDTH as usize * 4;
+        self.frame[i..i + 4].copy_from_slice(&[0, 0, 0, 255]);
+    }
+
+    fn draw_line(&self, p1: Vec2, p2: Vec2) {
+        // Brezhnev
+        let dx = (p2.x as i32 - p1.x as i32).abs();
+        let sx: i32 = if p1.x < p2.x { 1 } else { -1 };
+        let dy = -(p2.y as i32 - p1.y as i32).abs();
+        let sy: i32 = if p1.y < p2.y { 1 } else { -1 };
+        let mut err = dx + dy;
+
+        let (mut x0, mut y0) = (p1.x as i32, p1.y as i32);
+
+        loop {
+            self.px(x0 as usize, y0 as usize);
+            if x0 == p2.x as i32 && y0 == p2.y as i32 { break };
+            let e2 = 2 * err;
+
+            if e2 >= dy {
+                if x0 == p2.x as i32 { break };
+                err = err + dy;
+                x0 = x0 + sx;
+            }
+            if e2 <= dy {
+                if y0 == p2.x as i32 { break };
+                err = err + dx;
+                y0 = y0 + sy;
+            }
         }
+
+        // shittier
+        /*let mut dx = p2.x as i32 - p1.x as i32;
+        let mut dy = p2.y as i32 - p1.y as i32;
+
+        if dx == 0 || dy == 0 {
+            return
+        }
+
+        let step: i32;
+
+        if dx.abs() >= dy.abs() {
+            step = dx.abs();
+        } else {
+            step = dy.abs();
+        }
+
+        dx = dx / step;
+        dy = dy / step;
+
+        let (mut x, mut y) = (p1.x as i32, p1.y as i32);
+        let mut i = 1;
+
+        while i <= step {
+            px(x as usize, y as usize, frame);
+
+            x += dx;
+            y += dy;
+            i += 1;
+        }*/
     }
 
-    // shittier
-    /*let mut dx = p2.x as i32 - p1.x as i32;
-    let mut dy = p2.y as i32 - p1.y as i32;
-
-    if dx == 0 || dy == 0 {
-        return
+    fn draw_tri(&self, i: &Tri) {
+        self.draw_line(i.a.project(&self.cam), i.b.project(&self.cam));
+        self.draw_line(i.b.project(&self.cam), i.c.project(&self.cam));
+        self.draw_line(i.a.project(&self.cam), i.c.project(&self.cam));
     }
 
-    let step: i32;
-
-    if dx.abs() >= dy.abs() {
-        step = dx.abs();
-    } else {
-        step = dy.abs();
-    }
-
-    dx = dx / step;
-    dy = dy / step;
-
-    let (mut x, mut y) = (p1.x as i32, p1.y as i32);
-    let mut i = 1;
-
-    while i <= step {
-        px(x as usize, y as usize, frame);
-
-        x += dx;
-        y += dy;
-        i += 1;
-    }*/
-}
-
-fn draw_tri(i: &Tri, cam: &Camera, frame: &mut [u8]) {
-    draw_line(i.a.project(cam), i.b.project(cam), frame);
-    draw_line(i.b.project(cam), i.c.project(cam), frame);
-    draw_line(i.a.project(cam), i.c.project(cam), frame);
-}
-
-fn draw_prim(i: &Prim, cam: &Camera, frame: &mut [u8]) {
-    for t in i.tris.iter() {
-        draw_tri(t, cam, frame);
+    fn draw_prim(&self, i: &Prim) {
+        for t in i.tris.iter() {
+            self.draw_tri(t);
+        }
     }
 }
 
@@ -259,11 +270,10 @@ impl Tri {
 struct Prim {
     tris: Vec<Tri>,
 }
-
-/// Representation of the application state. In this example, a box will bounce around the screen.
 struct World {
     tris: Vec<Tri>,
     c: f32,
+    r: Renderer,
 }
 
 fn main() -> Result<(), Error> {
@@ -322,7 +332,6 @@ fn main() -> Result<(), Error> {
 }
 
 impl World {
-    /// Create a new `World` instance that can draw a moving box.
     fn new() -> Self {
         Self {
             tris: vec![Tri { 
@@ -332,32 +341,16 @@ impl World {
                 color: [0, 0, 0, 255],
             }],
             c: 0.,
+
         }
     }
 
-    /// Update the `World` internal state; bounce the box around the screen.
     fn update(&mut self) {
         self.c += 1.;
     }
 
-    /// Draw the `World` state to the frame buffer.
-    ///
-    /// Assumes the default texture format: `wgpu::TextureFormat::Rgba8UnormSrgb`
     fn draw(&self, frame: &mut [u8]) {
         for (_i, pixel) in frame.chunks_exact_mut(4).enumerate() {
-            /*let x = (i % WIDTH as usize) as i16;
-            let y = (i / WIDTH as usize) as i16;
-
-            let pos = (Vec3 { x: 0., y: 0., z: 0. }).process();
-
-            Vec2 { x: 0., y: 0. }.line(Vec2 { x: 10., y: 30. }, frame);
-
-            let rgba = if self.line1.contains(&Vec2 { x: x as f32, y: y as f32 }) {
-                [0, 0, 0, 255]
-            } else {
-                [255, 255, 255, 255]
-            };*/
-
             let rgba = [255, 255, 255, 255];
 
             pixel.copy_from_slice(&rgba);
