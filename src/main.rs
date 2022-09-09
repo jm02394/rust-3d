@@ -10,8 +10,11 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-const WIDTH: u32 = 1000;
-const HEIGHT: u32 = 1000;
+extern crate bresenham;
+use bresenham::Bresenham;
+
+const WIDTH: u32 = 400;
+const HEIGHT: u32 = 300;
 
 fn get_cube() -> Prim {
     Prim { tris: vec![
@@ -79,61 +82,9 @@ impl<'a> Renderer<'a> {
     }
 
     fn draw_line(&mut self, p1: Vec2, p2: Vec2) {
-        // Brezhnev
-        let dx = (p2.x as i32 - p1.x as i32).abs();
-        let sx: i32 = if p1.x < p2.x { 1 } else { -1 };
-        let dy = -(p2.y as i32 - p1.y as i32).abs();
-        let sy: i32 = if p1.y < p2.y { 1 } else { -1 };
-        let mut err = dx + dy;
-
-        let (mut x0, mut y0) = (p1.x as i32, p1.y as i32);
-
-        loop {
-            self.px(x0 as usize, y0 as usize);
-            if x0 == p2.x as i32 && y0 == p2.y as i32 { break };
-            let e2 = 2 * err;
-
-            if e2 >= dy {
-                if x0 == p2.x as i32 { break };
-                err = err + dy;
-                x0 = x0 + sx;
-            }
-            if e2 <= dy {
-                if y0 == p2.x as i32 { break };
-                err = err + dx;
-                y0 = y0 + sy;
-            }
+        for (x, y) in Bresenham::new((p1.x as isize, p1.y as isize), (p2.x as isize, p2.y as isize)) {
+            self.px(x as usize, y as usize);
         }
-
-        // shittier
-        /*let mut dx = p2.x as i32 - p1.x as i32;
-        let mut dy = p2.y as i32 - p1.y as i32;
-
-        if dx == 0 || dy == 0 {
-            return
-        }
-
-        let step: i32;
-
-        if dx.abs() >= dy.abs() {
-            step = dx.abs();
-        } else {
-            step = dy.abs();
-        }
-
-        dx = dx / step;
-        dy = dy / step;
-
-        let (mut x, mut y) = (p1.x as i32, p1.y as i32);
-        let mut i = 1;
-
-        while i <= step {
-            px(x as usize, y as usize, frame);
-
-            x += dx;
-            y += dy;
-            i += 1;
-        }*/
     }
 
     fn draw_tri(&mut self, i: &Tri) {
@@ -172,36 +123,6 @@ impl Vec2 {
     fn new(x: i32, y: i32) -> Self {
         Self { x: x as usize, y: y as usize }
     }
-
-    /*fn line(&self, p2: Vec2, frame: &mut [u8]) {
-        let slope = (p2.y - self.y) / (p2.x - self.x);
-
-        if (p2.y - self.y).abs() > (p2.x - self.x).abs() {
-            if self.x < p2.x {
-                for x in 0..(self.x - p2.x) as u16 {
-                    let y = slope * (x as f32 - p2.x) + p2.y;
-                    px(x as usize, y as usize, frame);
-                }
-            } else {
-                for x in 0..(p2.x - self.x) as u16 {
-                    let y = slope * (x as f32 - self.x) + self.y;
-                    px(x as usize, y as usize, frame);
-                }
-            }
-        } else {
-            if self.y < p2.y {
-                for y in 0..(self.x - p2.x) as u16 {
-                    let x = slope * (y as f32 - p2.x) + p2.y;
-                    px(x as usize, y as usize, frame);
-                }
-            } else {
-                for y in 0..(p2.x - self.x) as u16 {
-                    let x = slope * (y as f32 - self.x) + self.y;
-                    px(x as usize, y as usize, frame);
-                }
-            }
-        }
-    }*/
 }
 
 #[derive(PartialEq)]
@@ -218,6 +139,10 @@ impl Vec3 {
 
     fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
+    }
+
+    fn translate(&self, x: f32, y: f32, z: f32) -> Self {
+        Self { x: self.x + x, y: self.y + y, z: self.z + z }
     }
 
     fn project(&self, cam: &Camera) -> Vec2 {
@@ -244,17 +169,6 @@ impl Vec3 {
 
 type RGBA = [i32; 4];
 
-struct Tri2 {
-    a: Vec2,
-    b: Vec2,
-    c: Vec2,
-    color: RGBA,
-}
-
-impl Tri2 {
-    
-}
-
 struct Tri {
     a: Vec3,
     b: Vec3,
@@ -266,11 +180,26 @@ impl Tri {
     fn new(a: Vec3, b: Vec3, c: Vec3) -> Self {
         Self { a, b, c, color: [0, 0, 0, 255] }
     }
+
+    fn translate(&self, x: f32, y: f32, z: f32) -> Self {
+        Self { a: self.a.translate(x, y, z), b: self.b.translate(x, y, z), c: self.c.translate(x, y, z), color: self.color }
+    }
 }
 
 struct Prim {
     tris: Vec<Tri>,
 }
+
+impl Prim {
+    fn new(tris: Vec<Tri>) -> Self {
+        Self { tris }
+    }
+
+    fn translate(&self, x: f32, y: f32, z: f32) -> Self {
+        Prim::new(self.tris.iter().map(|t| t.translate(x, y, z)).collect())
+    }
+}
+
 struct World {
     tris: Vec<Tri>,
     c: f32,
@@ -283,12 +212,13 @@ fn main() -> Result<(), Error> {
     let window = {
         let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
         WindowBuilder::new()
-            .with_title("Hello Pixels")
+            .with_title("fuck you spencer")
             .with_inner_size(size)
             .with_min_inner_size(size)
             .build(&event_loop)
             .unwrap()
     };
+    window.set_maximized(true);
 
     let mut pixels = {
         let window_size = window.inner_size();
@@ -355,7 +285,8 @@ impl World {
             pixel.copy_from_slice(&rgba);
         }
         
-        Renderer::new(Camera::new(Vec3::new(self.c * 0.001, self.c * 0.002, -2.), Vec3::new_i(0, 0, 0), Vec3::new_i(0, 0, 200), 5.), frame).draw_prim(&get_cube());
-        //draw_line(Vec2::new(WIDTH as i32, HEIGHT as i32), Vec2::new(0, 0), frame);
+        let mut r = Renderer::new(Camera::new(Vec3::new(self.c * 0.001, self.c * 0.002, -2.), Vec3::new_i(0, 0, 0), Vec3::new_i(0, 0, 200), 1.), frame);
+        r.draw_prim(&get_cube());
+        r.draw_prim(&get_cube().translate(1., 1., 0.));
     }
 }
