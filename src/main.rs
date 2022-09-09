@@ -10,8 +10,8 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-const WIDTH: u32 = 200;
-const HEIGHT: u32 = 200;
+const WIDTH: u32 = 1000;
+const HEIGHT: u32 = 1000;
 
 fn get_cube() -> Prim {
     Prim { tris: vec![
@@ -66,11 +66,11 @@ struct Renderer<'a> {
 }
 
 impl<'a> Renderer<'a> {
-    fn new(cam: Camera, frame: &mut [u8]) -> Self {
+    fn new(cam: Camera, frame: &'a mut [u8]) -> Self {
         Self { cam, frame }
     }
 
-    fn px(&self, x: usize, y: usize) {
+    fn px(&mut self, x: usize, y: usize) {
         if x >= WIDTH as usize || y >= HEIGHT as usize {
             return
         }
@@ -78,7 +78,7 @@ impl<'a> Renderer<'a> {
         self.frame[i..i + 4].copy_from_slice(&[0, 0, 0, 255]);
     }
 
-    fn draw_line(&self, p1: Vec2, p2: Vec2) {
+    fn draw_line(&mut self, p1: Vec2, p2: Vec2) {
         // Brezhnev
         let dx = (p2.x as i32 - p1.x as i32).abs();
         let sx: i32 = if p1.x < p2.x { 1 } else { -1 };
@@ -136,13 +136,13 @@ impl<'a> Renderer<'a> {
         }*/
     }
 
-    fn draw_tri(&self, i: &Tri) {
+    fn draw_tri(&mut self, i: &Tri) {
         self.draw_line(i.a.project(&self.cam), i.b.project(&self.cam));
         self.draw_line(i.b.project(&self.cam), i.c.project(&self.cam));
         self.draw_line(i.a.project(&self.cam), i.c.project(&self.cam));
     }
 
-    fn draw_prim(&self, i: &Prim) {
+    fn draw_prim(&mut self, i: &Prim) {
         for t in i.tris.iter() {
             self.draw_tri(t);
         }
@@ -153,11 +153,12 @@ struct Camera {
     pos: Vec3,
     rot: Vec3,
     proj: Vec3,
+    sc: f32,
 }
 
 impl Camera {
-    fn new(pos: Vec3, rot: Vec3, proj: Vec3) -> Self {
-        Self { pos, rot, proj }
+    fn new(pos: Vec3, rot: Vec3, proj: Vec3, sc: f32) -> Self {
+        Self { pos, rot, proj, sc }
     }
 }
 
@@ -237,7 +238,7 @@ impl Vec3 {
         let bx = e.z / dz * dx + e.x;
         let by = e.z / dz * dy + e.y;
         
-        Vec2 { x: (WIDTH as f32 / 2. + bx).floor() as usize, y: (HEIGHT as f32 / 2. + by).floor() as usize }
+        Vec2 { x: (WIDTH as f32 / 2. + bx * cam.sc).floor() as usize, y: (HEIGHT as f32 / 2. + by * cam.sc).floor() as usize }
     }
 }
 
@@ -273,7 +274,6 @@ struct Prim {
 struct World {
     tris: Vec<Tri>,
     c: f32,
-    r: Renderer,
 }
 
 fn main() -> Result<(), Error> {
@@ -341,7 +341,6 @@ impl World {
                 color: [0, 0, 0, 255],
             }],
             c: 0.,
-
         }
     }
 
@@ -356,7 +355,7 @@ impl World {
             pixel.copy_from_slice(&rgba);
         }
         
-        draw_prim(&get_cube(), &Camera::new(Vec3::new(self.c * 0.001, self.c * 0.002, -2.), Vec3::new_i(0, 0, 0), Vec3::new_i(0, 0, 200)), frame);
+        Renderer::new(Camera::new(Vec3::new(self.c * 0.001, self.c * 0.002, -2.), Vec3::new_i(0, 0, 0), Vec3::new_i(0, 0, 200), 5.), frame).draw_prim(&get_cube());
         //draw_line(Vec2::new(WIDTH as i32, HEIGHT as i32), Vec2::new(0, 0), frame);
     }
 }
