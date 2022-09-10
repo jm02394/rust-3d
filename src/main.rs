@@ -63,39 +63,40 @@ fn get_cube() -> Prim {
     ] }
 }
 
-struct Renderer<'a> {
+struct Canvas<'a> {
     cam: Camera,
     frame: &'a mut [u8],
 }
 
-impl<'a> Renderer<'a> {
+impl<'a> Canvas<'a> {
     fn new(cam: Camera, frame: &'a mut [u8]) -> Self {
         Self { cam, frame }
     }
 
-    fn px(&mut self, x: usize, y: usize) {
-        if x >= WIDTH as usize || y >= HEIGHT as usize {
+    fn draw_px(&mut self, x: isize, y: isize) {
+        if 0 > x || x >= WIDTH as isize || 0 > y || y >= HEIGHT as isize {
             return
         }
-        let i = x * 4 + y * WIDTH as usize * 4;
+        let i = (x * 4 + y * WIDTH as isize * 4) as usize;
         self.frame[i..i + 4].copy_from_slice(&[0, 0, 0, 255]);
     }
 
     fn draw_line(&mut self, p1: Vec2, p2: Vec2) {
         for (x, y) in Bresenham::new((p1.x as isize, p1.y as isize), (p2.x as isize, p2.y as isize)) {
-            self.px(x as usize, y as usize);
+            //println!("{}, {} | {}, {}", p1.x, p1.y, p2.x, p2.y);
+            self.draw_px(x, y);
         }
     }
 
-    fn draw_tri(&mut self, i: &Tri) {
+    fn render_tri(&mut self, i: &Tri) {
         self.draw_line(i.a.project(&self.cam), i.b.project(&self.cam));
         self.draw_line(i.b.project(&self.cam), i.c.project(&self.cam));
         self.draw_line(i.a.project(&self.cam), i.c.project(&self.cam));
     }
 
-    fn draw_prim(&mut self, i: &Prim) {
+    fn render_prim(&mut self, i: &Prim) {
         for t in i.tris.iter() {
-            self.draw_tri(t);
+            self.render_tri(t);
         }
     }
 }
@@ -115,13 +116,13 @@ impl Camera {
 
 #[derive(PartialEq, Clone, Copy)]
 struct Vec2 {
-    x: usize,
-    y: usize,
+    x: isize,
+    y: isize,
 }
 
 impl Vec2 {
-    fn new(x: i32, y: i32) -> Self {
-        Self { x: x as usize, y: y as usize }
+    fn new(x: isize, y: isize) -> Self {
+        Self { x, y }
     }
 }
 
@@ -163,7 +164,7 @@ impl Vec3 {
         let bx = e.z / dz * dx + e.x;
         let by = e.z / dz * dy + e.y;
         
-        Vec2 { x: (WIDTH as f32 / 2. + bx * cam.sc).floor() as usize, y: (HEIGHT as f32 / 2. + by * cam.sc).floor() as usize }
+        Vec2 { x: (WIDTH as f32 / 2. + bx * cam.sc).floor() as isize, y: (HEIGHT as f32 / 2. + by * cam.sc).floor() as isize }
     }
 }
 
@@ -212,7 +213,7 @@ fn main() -> Result<(), Error> {
     let window = {
         let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
         WindowBuilder::new()
-            .with_title("fuck you spencer")
+            .with_title("Hello Pixels")
             .with_inner_size(size)
             .with_min_inner_size(size)
             .build(&event_loop)
@@ -285,8 +286,8 @@ impl World {
             pixel.copy_from_slice(&rgba);
         }
         
-        let mut r = Renderer::new(Camera::new(Vec3::new(self.c * 0.001, self.c * 0.002, -2.), Vec3::new_i(0, 0, 0), Vec3::new_i(0, 0, 200), 1.), frame);
-        r.draw_prim(&get_cube());
-        r.draw_prim(&get_cube().translate(1., 1., 0.));
+        let mut r = Canvas::new(Camera::new(Vec3::new(self.c * 0.001, self.c * 0.002, -2.), Vec3::new_i(0, 0, 0), Vec3::new_i(0, 0, 200), 1.), frame);
+        r.render_prim(&get_cube());
+        r.render_prim(&get_cube().translate(1., 1., 0.));
     }
 }
