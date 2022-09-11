@@ -10,6 +10,8 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
+use std::mem;
+
 extern crate bresenham;
 use bresenham::Bresenham;
 
@@ -64,39 +66,114 @@ fn get_cube() -> Prim {
 }
 
 struct Canvas<'a> {
-    cam: Camera,
+    cam: &'a Camera,
     frame: &'a mut [u8],
 }
 
 impl<'a> Canvas<'a> {
-    fn new(cam: Camera, frame: &'a mut [u8]) -> Self {
+    fn new(cam: &'a Camera, frame: &'a mut [u8]) -> Self {
         Self { cam, frame }
     }
 
-    fn draw_px(&mut self, x: isize, y: isize) {
+    fn draw_px(&mut self, x: isize, y: isize, col: RGBA) {
         if 0 > x || x >= WIDTH as isize || 0 > y || y >= HEIGHT as isize {
             return
         }
         let i = (x * 4 + y * WIDTH as isize * 4) as usize;
-        self.frame[i..i + 4].copy_from_slice(&[0, 0, 0, 255]);
+        self.frame[i..i + 4].copy_from_slice(&col);
     }
 
-    fn draw_line(&mut self, p1: Vec2, p2: Vec2) {
-        for (x, y) in Bresenham::new((p1.x as isize, p1.y as isize), (p2.x as isize, p2.y as isize)) {
-            //println!("{}, {} | {}, {}", p1.x, p1.y, p2.x, p2.y);
-            self.draw_px(x, y);
+    fn draw_line(&mut self, a: Vec2, b: Vec2, col: RGBA) {
+        for (x, y) in Bresenham::new((a.x as isize, a.y as isize), (b.x as isize, b.y as isize)) {
+            self.draw_px(x, y, col);
         }
     }
 
-    fn render_tri(&mut self, i: &Tri) {
-        self.draw_line(i.a.project(&self.cam), i.b.project(&self.cam));
-        self.draw_line(i.b.project(&self.cam), i.c.project(&self.cam));
-        self.draw_line(i.a.project(&self.cam), i.c.project(&self.cam));
+    /*fn draw_line(&mut self, mut a: Vec2, mut b: Vec2, col: RGBA) {
+        let steep = (a.x - b.x).abs() < (a.y - b.y).abs();
+
+        if steep { 
+            mem::swap(&mut a.x, &mut a.y);
+            mem::swap(&mut b.x, &mut b.y);
+        }
+
+        if a.x > b.x { mem::swap(&mut a, &mut b) }
+
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let err_inc = dy.abs() * 2;
+        let mut err = 0;
+
+        let mut y = a.y;
+
+        for x in a.x..=b.x {
+            if steep { self.draw_px(y, x, col) }
+            else { self.draw_px(x, y, col) }
+
+            err += err_inc;
+
+            if err > dx {
+                y += if b.y > a.y { 1 } else { -1 };
+                err -= dx * 2;
+            }
+        }
+    }*/
+
+    fn render_tri(&mut self, i: &Tri, col: RGBA) {
+        let (a, b, c) = (&mut i.a.project(&self.cam), &mut i.b.project(&self.cam), &mut i.c.project(&self.cam));
+
+        if b.y < a.y { mem::swap(b, a) };
+        if c.y < a.y { mem::swap(c, a) };
+        if c.y < b.y { mem::swap(c, b) };
+
+        let th = (c.y - a.y) as f32;
+
+        if th != 0. {
+            for y in a.y..=b.y {
+                let sh = (b.y - a.y) as f32;
+
+                if sh != 0. {
+                    let alpha = (y - a.y) as f32 / th;
+                    let beta = (y - a.y) as f32 / sh;
+
+                    let lx = a.x as f32 + ((c.x - a.x) as f32 * alpha);
+                    let rx = a.x as f32 + ((b.x - a.x) as f32 * beta);
+
+                    self.draw_line(
+                        Vec2::new(lx as isize, y), 
+                        Vec2::new(rx as isize, y),
+                        col
+                    );
+                }
+            }
+
+            for y in b.y..=c.y {
+                let sh = (c.y - b.y) as f32;
+
+                if sh != 0. {
+                    let alpha = (y - a.y) as f32 / th;
+                    let beta = (y - b.y) as f32 / sh;
+
+                    let lx = a.x as f32 + ((c.x - a.x) as f32 * alpha);
+                    let rx = b.x as f32 + ((c.x - b.x) as f32 * beta);
+
+                    self.draw_line(
+                        Vec2::new(lx as isize, y), 
+                        Vec2::new(rx as isize, y),
+                        col
+                    );
+                }
+            }
+        }
+
+        self.draw_line(*a, *b, [0, 0, 0, 255]);
+        self.draw_line(*b, *c, [0, 0, 0, 255]);
+        self.draw_line(*a, *c, [0, 0, 0, 255]);
     }
 
     fn render_prim(&mut self, i: &Prim) {
         for t in i.tris.iter() {
-            self.render_tri(t);
+            self.render_tri(t, [255, 0, 0, 255]);
         }
     }
 }
@@ -111,6 +188,10 @@ struct Camera {
 impl Camera {
     fn new(pos: Vec3, rot: Vec3, proj: Vec3, sc: f32) -> Self {
         Self { pos, rot, proj, sc }
+    }
+
+    fn translate_mut(&mut self, x: f32, y: f32, z: f32) {
+        self.pos = self.pos.translate(x, y, z);
     }
 }
 
@@ -168,7 +249,7 @@ impl Vec3 {
     }
 }
 
-type RGBA = [i32; 4];
+type RGBA = [u8; 4];
 
 struct Tri {
     a: Vec3,
@@ -204,6 +285,41 @@ impl Prim {
 struct World {
     tris: Vec<Tri>,
     c: f32,
+    cam: Camera,
+}
+
+impl World {
+    fn new() -> Self {
+        Self {
+            tris: vec![Tri { 
+                a: Vec3::new_i(0, 0, 0),
+                b: Vec3::new_i(1, 0, 0),
+                c: Vec3::new_i(1, 1, 0),
+                color: [0, 0, 0, 255],
+            }],
+            c: 0.,
+            cam: Camera::new(Vec3::new_i(0, 0, -2), Vec3::new_i(0, 0, 0), Vec3::new_i(0, 0, 200), 1.),
+        }
+    }
+
+    fn update(&mut self) {
+        self.c += 1.;
+
+        self.cam.translate_mut(0.001, 0.002, 0.);
+    }
+
+    fn draw(&self, frame: &mut [u8]) {
+        for (_i, pixel) in frame.chunks_exact_mut(4).enumerate() {
+            let rgba = [255, 255, 255, 255];
+
+            pixel.copy_from_slice(&rgba);
+        }
+        
+        let mut r = Canvas::new(&self.cam, frame);
+
+        r.render_prim(&get_cube());
+        r.render_prim(&get_cube().translate(1., 1., 0.));
+    }
 }
 
 fn main() -> Result<(), Error> {
@@ -260,34 +376,4 @@ fn main() -> Result<(), Error> {
             window.request_redraw();
         }
     });
-}
-
-impl World {
-    fn new() -> Self {
-        Self {
-            tris: vec![Tri { 
-                a: Vec3 { x: 0., y: 0., z: 0. },
-                b: Vec3 { x: 1., y: 0., z: 0. },
-                c: Vec3 { x: 1., y: 1., z: 0. },
-                color: [0, 0, 0, 255],
-            }],
-            c: 0.,
-        }
-    }
-
-    fn update(&mut self) {
-        self.c += 1.;
-    }
-
-    fn draw(&self, frame: &mut [u8]) {
-        for (_i, pixel) in frame.chunks_exact_mut(4).enumerate() {
-            let rgba = [255, 255, 255, 255];
-
-            pixel.copy_from_slice(&rgba);
-        }
-        
-        let mut r = Canvas::new(Camera::new(Vec3::new(self.c * 0.001, self.c * 0.002, -2.), Vec3::new_i(0, 0, 0), Vec3::new_i(0, 0, 200), 1.), frame);
-        r.render_prim(&get_cube());
-        r.render_prim(&get_cube().translate(1., 1., 0.));
-    }
 }
