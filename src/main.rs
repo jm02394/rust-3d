@@ -15,6 +15,8 @@ use std::mem;
 extern crate bresenham;
 use bresenham::Bresenham;
 
+mod utils;
+
 const WIDTH: u32 = 400;
 const HEIGHT: u32 = 300;
 
@@ -65,27 +67,48 @@ fn get_cube() -> Prim {
     ] }
 }
 
+struct ZBuffer {
+    b: Box<[[RGBA; HEIGHT as usize]; WIDTH as usize]>,
+}
+
+impl ZBuffer {
+    fn new() -> Self {
+        Self { b: Box::new([[[255, 255, 255, 255]; HEIGHT as usize]; WIDTH as usize]) }
+    }
+
+    fn set(&mut self, x: isize, y: isize, col: RGBA) {
+        if !(0 > x || x >= WIDTH as isize || 0 > y || y >= HEIGHT as isize) {
+            self.b[x as usize][y as usize] = col;
+        }
+    }
+
+    fn get(&self, x: usize, y: usize) -> RGBA {
+        self.b[x][y]
+    }
+}
+
 struct Canvas<'a> {
     cam: &'a Camera,
-    frame: &'a mut [u8],
+    zbuffer: ZBuffer,
 }
 
 impl<'a> Canvas<'a> {
-    fn new(cam: &'a Camera, frame: &'a mut [u8]) -> Self {
-        Self { cam, frame }
+    fn new(cam: &'a Camera, zbuffer: ZBuffer) -> Self {
+        Self { cam, zbuffer }
     }
 
-    fn draw_px(&mut self, x: isize, y: isize, col: RGBA) {
+    /*fn draw_px(&mut self, x: isize, y: isize, col: RGBA) {
         if 0 > x || x >= WIDTH as isize || 0 > y || y >= HEIGHT as isize {
             return
         }
         let i = (x * 4 + y * WIDTH as isize * 4) as usize;
         self.frame[i..i + 4].copy_from_slice(&col);
-    }
+    }*/
 
     fn draw_line(&mut self, a: Vec2, b: Vec2, col: RGBA) {
         for (x, y) in Bresenham::new((a.x as isize, a.y as isize), (b.x as isize, b.y as isize)) {
-            self.draw_px(x, y, col);
+            //self.draw_px(x, y, col);
+            self.zbuffer.set(x, y, col);
         }
     }
 
@@ -309,16 +332,23 @@ impl World {
     }
 
     fn draw(&self, frame: &mut [u8]) {
-        for (_i, pixel) in frame.chunks_exact_mut(4).enumerate() {
-            let rgba = [255, 255, 255, 255];
-
-            pixel.copy_from_slice(&rgba);
-        }
-        
-        let mut r = Canvas::new(&self.cam, frame);
+        let mut r = Canvas::new(&self.cam, ZBuffer::new());
 
         r.render_prim(&get_cube());
         r.render_prim(&get_cube().translate(1., 1., 0.));
+
+        for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
+            /*let rgba = [255, 255, 255, 255];
+
+            pixel.copy_from_slice(&rgba);*/
+
+            let x = i % WIDTH as usize;
+            let y = i / WIDTH as usize;
+
+            pixel.copy_from_slice(&r.zbuffer.get(x, y));
+
+            //r.draw_px(x as isize, y as isize, r.zbuffer.get(x, y));
+        }
     }
 }
 
@@ -329,7 +359,7 @@ fn main() -> Result<(), Error> {
     let window = {
         let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
         WindowBuilder::new()
-            .with_title("Hello Pixels")
+            .with_title("hi")
             .with_inner_size(size)
             .with_min_inner_size(size)
             .build(&event_loop)
