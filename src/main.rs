@@ -10,7 +10,10 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
+use core::f64::INFINITY;
+
 use std::mem;
+use std::cmp;
 
 extern crate bresenham;
 use bresenham::Bresenham;
@@ -67,22 +70,34 @@ fn get_cube() -> Prim {
     ] }
 }
 
+#[derive(Clone, Copy)]
+struct CZ {
+    c: RGBA,
+    z: f64,
+}
+
+impl CZ {
+    fn new(c: RGBA, z: f64) -> Self {
+        Self { c, z }
+    }
+}
+
 struct ZBuffer {
-    b: Box<[[RGBA; HEIGHT as usize]; WIDTH as usize]>,
+    b: Box<[[CZ; HEIGHT as usize]; WIDTH as usize]>,
 }
 
 impl ZBuffer {
     fn new() -> Self {
-        Self { b: Box::new([[[255, 255, 255, 255]; HEIGHT as usize]; WIDTH as usize]) }
+        Self { b: Box::new([[CZ { c: [255, 255, 255, 255], z: INFINITY }; HEIGHT as usize]; WIDTH as usize]) }
     }
 
-    fn set(&mut self, x: isize, y: isize, col: RGBA) {
+    fn set(&mut self, x: isize, y: isize, cz: CZ) {
         if !(0 > x || x >= WIDTH as isize || 0 > y || y >= HEIGHT as isize) {
-            self.b[x as usize][y as usize] = col;
+            self.b[x as usize][y as usize] = cz;
         }
     }
 
-    fn get(&self, x: usize, y: usize) -> RGBA {
+    fn get(&self, x: usize, y: usize) -> CZ {
         self.b[x][y]
     }
 }
@@ -105,10 +120,10 @@ impl<'a> Canvas<'a> {
         self.frame[i..i + 4].copy_from_slice(&col);
     }*/
 
-    fn draw_line(&mut self, a: Vec2, b: Vec2, col: RGBA) {
+    fn draw_line(&mut self, a: Vec2, b: Vec2, cz: CZ) {
         for (x, y) in Bresenham::new((a.x as isize, a.y as isize), (b.x as isize, b.y as isize)) {
             //self.draw_px(x, y, col);
-            self.zbuffer.set(x, y, col);
+            self.zbuffer.set(x, y, cz);
         }
     }
 
@@ -151,6 +166,13 @@ impl<'a> Canvas<'a> {
 
         let th = (c.y - a.y) as f32;
 
+        let bbx1 = utils::min(i.a.x, utils::min(i.b.x, i.c.x));
+        let bbx2 = utils::max(i.a.x, utils::min(i.b.x, i.c.x));
+
+        let bbz1 = utils::min(i.a.z, utils::min(i.b.z, i.c.z));
+        let bbz2 = utils::max(i.a.z, utils::min(i.b.z, i.c.z));
+        let xint = utils::interpolate(bbz1 as f32, bbz2 as f32, th);
+
         if th != 0. {
             for y in a.y..=b.y {
                 let sh = (b.y - a.y) as f32;
@@ -161,12 +183,19 @@ impl<'a> Canvas<'a> {
 
                     let lx = a.x as f32 + ((c.x - a.x) as f32 * alpha);
                     let rx = a.x as f32 + ((b.x - a.x) as f32 * beta);
+                    let xint = utils::interpolate(bbx1 as f32, bbx2 as f32, rx - lx);
 
-                    self.draw_line(
+                    for (i, x) in xint.iter().enumerate() {
+                        if self.zbuffer.get(lx + i, y).z > Vec3::new(*x, y as f32, ).distance(self.cam.pos) as f64 {
+                            self.zbuffer.set(lx + i, y, CZ::new([255, 0, 0, 255], ))
+                        }
+                    }
+
+                    /*self.draw_line(
                         Vec2::new(lx as isize, y), 
                         Vec2::new(rx as isize, y),
                         col
-                    );
+                    );*/
                 }
             }
 
@@ -244,6 +273,10 @@ impl Vec3 {
 
     fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
+    }
+
+    fn distance(&self, inp: Vec3) -> f32 {
+        ((inp.x - self.x).powf(2.) + (inp.y - self.y).powf(2.) + (inp.z - self.z).powf(2.)).sqrt()
     }
 
     fn translate(&self, x: f32, y: f32, z: f32) -> Self {

@@ -8,3 +8,13 @@ pub fn interpolate(n1: f32, n2: f32, steps: f32) -> Vec<f32> {
 
     out
 }
+
+pub fn min(n1: f32, n2: f32) -> f32 {
+    if n1 < n2 { n1 }
+    else { n2 }
+}
+
+pub fn max(n1: f32, n2: f32) -> f32 {
+    if n1 < n2 { n2 }
+    else { n1 }
+}
