@@ -15,6 +15,8 @@ use core::f64::INFINITY;
 use std::mem;
 use std::cmp;
 
+use rand::Rng;
+
 extern crate bresenham;
 use bresenham::Bresenham;
 
@@ -83,12 +85,12 @@ impl CZ {
 }
 
 struct ZBuffer {
-    b: Box<[[CZ; HEIGHT as usize]; WIDTH as usize]>,
+    b: Box<[Box<[CZ]>]>, //b: Box<[Box<[CZ; HEIGHT as usize]>; WIDTH as usize]>,
 }
 
 impl ZBuffer {
     fn new() -> Self {
-        Self { b: Box::new([[CZ { c: [255, 255, 255, 255], z: INFINITY }; HEIGHT as usize]; WIDTH as usize]) }
+        Self { b: vec![vec![CZ { c: [255, 255, 255, 255], z: INFINITY }; HEIGHT as usize].into_boxed_slice(); WIDTH as usize].into_boxed_slice() }
     }
 
     fn set(&mut self, x: isize, y: isize, cz: CZ) {
@@ -171,7 +173,7 @@ impl<'a> Canvas<'a> {
 
         let bbz1 = utils::min(i.a.z, utils::min(i.b.z, i.c.z));
         let bbz2 = utils::max(i.a.z, utils::min(i.b.z, i.c.z));
-        let xint = utils::interpolate(bbz1 as f32, bbz2 as f32, th);
+        //let xint = utils::interpolate(bbz1 as f32, bbz2 as f32, th);
 
         if th != 0. {
             for y in a.y..=b.y {
@@ -184,10 +186,16 @@ impl<'a> Canvas<'a> {
                     let lx = a.x as f32 + ((c.x - a.x) as f32 * alpha);
                     let rx = a.x as f32 + ((b.x - a.x) as f32 * beta);
                     let xint = utils::interpolate(bbx1 as f32, bbx2 as f32, rx - lx);
+                    let zint = utils::interpolate(bbz1 as f32, bbz2 as f32, rx - lx);
 
                     for (i, x) in xint.iter().enumerate() {
-                        if self.zbuffer.get(lx + i, y).z > Vec3::new(*x, y as f32, ).distance(self.cam.pos) as f64 {
-                            self.zbuffer.set(lx + i, y, CZ::new([255, 0, 0, 255], ))
+                        if 0 < lx as usize + i && lx as usize + i < WIDTH as usize && 0 < y && y < HEIGHT as isize {
+                            if self.zbuffer.get(lx as usize + i, y as usize).z > Vec3::new(*x, y as f32, zint[i]).distance(self.cam.pos) as f64 {
+                                let xp = (lx as usize + i) as isize;
+                                if xp < WIDTH as isize && y < HEIGHT as isize {
+                                    self.zbuffer.set(xp, y, CZ::new(col, zint[i] as f64));
+                                }
+                            }
                         }
                     }
 
@@ -204,6 +212,37 @@ impl<'a> Canvas<'a> {
 
                 if sh != 0. {
                     let alpha = (y - a.y) as f32 / th;
+                    let beta = (y - a.y) as f32 / sh;
+
+                    let lx = a.x as f32 + ((c.x - a.x) as f32 * alpha);
+                    let rx = a.x as f32 + ((b.x - a.x) as f32 * beta);
+                    let xint = utils::interpolate(bbx1 as f32, bbx2 as f32, rx - lx);
+                    let zint = utils::interpolate(bbz1 as f32, bbz2 as f32, rx - lx);
+
+                    for (i, x) in xint.iter().enumerate() {
+                        if 0 < lx as usize + i && lx as usize + i < WIDTH as usize && 0 < y && y < HEIGHT as isize {
+                            if self.zbuffer.get(lx as usize + i, y as usize).z > Vec3::new(*x, y as f32, zint[i]).distance(self.cam.pos) as f64 {
+                                let xp = (lx as usize + i) as isize;
+                                if xp < WIDTH as isize && y < HEIGHT as isize {
+                                    self.zbuffer.set(xp, y, CZ::new(col, zint[i] as f64));
+                                }
+                            }
+                        }
+                    }
+
+                    /*self.draw_line(
+                        Vec2::new(lx as isize, y), 
+                        Vec2::new(rx as isize, y),
+                        col
+                    );*/
+                }
+            }
+
+            /*for y in b.y..=c.y {
+                let sh = (c.y - b.y) as f32;
+
+                if sh != 0. {
+                    let alpha = (y - a.y) as f32 / th;
                     let beta = (y - b.y) as f32 / sh;
 
                     let lx = a.x as f32 + ((c.x - a.x) as f32 * alpha);
@@ -215,17 +254,18 @@ impl<'a> Canvas<'a> {
                         col
                     );
                 }
-            }
+            }*/
         }
 
-        self.draw_line(*a, *b, [0, 0, 0, 255]);
-        self.draw_line(*b, *c, [0, 0, 0, 255]);
-        self.draw_line(*a, *c, [0, 0, 0, 255]);
+        //self.draw_line(*a, *b, [0, 0, 0, 255]);
+        //self.draw_line(*b, *c, [0, 0, 0, 255]);
+        //self.draw_line(*a, *c, [0, 0, 0, 255]);
     }
 
     fn render_prim(&mut self, i: &Prim) {
         for t in i.tris.iter() {
-            self.render_tri(t, [255, 0, 0, 255]);
+            self.render_tri(t, [rand::thread_rng().gen_range(0..=255), rand::thread_rng().gen_range(0..=255), rand::thread_rng().gen_range(0..=255), 255])
+            //self.render_tri(t, [255, 0, 0, 255]);
         }
     }
 }
@@ -259,7 +299,7 @@ impl Vec2 {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 struct Vec3 {
     x: f32,
     y: f32,
@@ -378,7 +418,7 @@ impl World {
             let x = i % WIDTH as usize;
             let y = i / WIDTH as usize;
 
-            pixel.copy_from_slice(&r.zbuffer.get(x, y));
+            pixel.copy_from_slice(&r.zbuffer.get(x, y).c);
 
             //r.draw_px(x as isize, y as isize, r.zbuffer.get(x, y));
         }
