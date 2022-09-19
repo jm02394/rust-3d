@@ -1,4 +1,4 @@
-pub fn interpolate(i0: isize, d0: f32, i1: isize, d1: f32) -> Vec<f32> {
+pub fn interpolate(i0: f32, d0: f32, i1: f32, d1: f32) -> Vec<f32> {
     if i0 == i1 {
         return Vec::from([d0]);
     }
