@@ -104,6 +104,12 @@ impl ZBuffer {
     }
 }
 
+type RGBA = [u8; 4];
+
+fn mult_rgba(inp: RGBA, f: f32) -> RGBA {
+    [(inp[0] as f32 * f) as u8, (inp[1] as f32 * f) as u8, (inp[2] as f32 * f) as u8, inp[3]]
+}
+
 struct Canvas<'a> {
     cam: &'a Camera,
     zbuffer: ZBuffer,
@@ -129,139 +135,54 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /*fn draw_line(&mut self, mut a: Vec2, mut b: Vec2, col: RGBA) {
-        let steep = (a.x - b.x).abs() < (a.y - b.y).abs();
-
-        if steep { 
-            mem::swap(&mut a.x, &mut a.y);
-            mem::swap(&mut b.x, &mut b.y);
-        }
-
-        if a.x > b.x { mem::swap(&mut a, &mut b) }
-
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let err_inc = dy.abs() * 2;
-        let mut err = 0;
-
-        let mut y = a.y;
-
-        for x in a.x..=b.x {
-            if steep { self.draw_px(y, x, col) }
-            else { self.draw_px(x, y, col) }
-
-            err += err_inc;
-
-            if err > dx {
-                y += if b.y > a.y { 1 } else { -1 };
-                err -= dx * 2;
-            }
-        }
-    }*/
-
     fn render_tri(&mut self, i: &Tri, col: RGBA) {
         let (a, b, c) = (&mut i.a.project(&self.cam), &mut i.b.project(&self.cam), &mut i.c.project(&self.cam));
+        let (mut ia, mut ib, mut ic) = (&i.a, &i.b, &i.c);
 
-        if b.y < a.y { mem::swap(b, a) };
-        if c.y < a.y { mem::swap(c, a) };
-        if c.y < b.y { mem::swap(c, b) };
+        if b.y < a.y { mem::swap(b, a); mem::swap(&mut ib, &mut ia); };
+        if c.y < a.y { mem::swap(c, a); mem::swap(&mut ic, &mut ia); };
+        if c.y < b.y { mem::swap(c, b); mem::swap(&mut ic, &mut ib); };
 
-        let th = (c.y - a.y) as f32;
+        let mut xab = utils::interpolate(a.y, a.x as f32, b.y, b.x as f32);
+        let mut zab = utils::interpolate(a.y, ia.z, b.y, ib.z);
 
-        let bbx1 = utils::min(i.a.x, utils::min(i.b.x, i.c.x));
-        let bbx2 = utils::max(i.a.x, utils::min(i.b.x, i.c.x));
+        let xbc = utils::interpolate(b.y, b.x as f32, c.y, c.x as f32);
+        let zbc = utils::interpolate(b.y, ib.z, c.y, ic.z);
 
-        let bbz1 = utils::min(i.a.z, utils::min(i.b.z, i.c.z));
-        let bbz2 = utils::max(i.a.z, utils::min(i.b.z, i.c.z));
-        //let xint = utils::interpolate(bbz1 as f32, bbz2 as f32, th);
+        let xac = utils::interpolate(a.y, a.x as f32, c.y, c.x as f32);
+        let zac = utils::interpolate(a.y, ia.z, c.y, ic.z);
 
-        if th != 0. {
-            for y in a.y..=b.y {
-                let sh = (b.y - a.y) as f32;
+        xab.pop();
+        let xabc = utils::cat(&xab, &xbc);
 
-                if sh != 0. {
-                    let alpha = (y - a.y) as f32 / th;
-                    let beta = (y - a.y) as f32 / sh;
+        zab.pop();
+        let zabc = utils::cat(&zab, &zbc);
 
-                    let lx = a.x as f32 + ((c.x - a.x) as f32 * alpha);
-                    let rx = a.x as f32 + ((b.x - a.x) as f32 * beta);
-                    let xint = utils::interpolate(bbx1 as f32, bbx2 as f32, rx - lx);
-                    let zint = utils::interpolate(bbz1 as f32, bbz2 as f32, rx - lx);
+        let (xl, xr): (Vec<f32>, Vec<f32>);
+        let (zl, zr): (Vec<f32>, Vec<f32>);
+        let m = xabc.len() / 2;
 
-                    for (i, x) in xint.iter().enumerate() {
-                        if 0 < lx as usize + i && lx as usize + i < WIDTH as usize && 0 < y && y < HEIGHT as isize {
-                            if self.zbuffer.get(lx as usize + i, y as usize).z > Vec3::new(*x, y as f32, zint[i]).distance(self.cam.pos) as f64 {
-                                let xp = (lx as usize + i) as isize;
-                                if xp < WIDTH as isize && y < HEIGHT as isize {
-                                    self.zbuffer.set(xp, y, CZ::new(col, zint[i] as f64));
-                                }
-                            }
-                        }
-                    }
-
-                    /*self.draw_line(
-                        Vec2::new(lx as isize, y), 
-                        Vec2::new(rx as isize, y),
-                        col
-                    );*/
-                }
-            }
-
-            for y in b.y..=c.y {
-                let sh = (c.y - b.y) as f32;
-
-                if sh != 0. {
-                    let alpha = (y - a.y) as f32 / th;
-                    let beta = (y - a.y) as f32 / sh;
-
-                    let lx = a.x as f32 + ((c.x - a.x) as f32 * alpha);
-                    let rx = a.x as f32 + ((b.x - a.x) as f32 * beta);
-                    let xint = utils::interpolate(bbx1 as f32, bbx2 as f32, rx - lx);
-                    let zint = utils::interpolate(bbz1 as f32, bbz2 as f32, rx - lx);
-
-                    for (i, x) in xint.iter().enumerate() {
-                        if 0 < lx as usize + i && lx as usize + i < WIDTH as usize && 0 < y && y < HEIGHT as isize {
-                            if self.zbuffer.get(lx as usize + i, y as usize).z > Vec3::new(*x, y as f32, zint[i]).distance(self.cam.pos) as f64 {
-                                let xp = (lx as usize + i) as isize;
-                                if xp < WIDTH as isize && y < HEIGHT as isize {
-                                    self.zbuffer.set(xp, y, CZ::new(col, zint[i] as f64));
-                                }
-                            }
-                        }
-                    }
-
-                    /*self.draw_line(
-                        Vec2::new(lx as isize, y), 
-                        Vec2::new(rx as isize, y),
-                        col
-                    );*/
-                }
-            }
-
-            /*for y in b.y..=c.y {
-                let sh = (c.y - b.y) as f32;
-
-                if sh != 0. {
-                    let alpha = (y - a.y) as f32 / th;
-                    let beta = (y - b.y) as f32 / sh;
-
-                    let lx = a.x as f32 + ((c.x - a.x) as f32 * alpha);
-                    let rx = b.x as f32 + ((c.x - b.x) as f32 * beta);
-
-                    self.draw_line(
-                        Vec2::new(lx as isize, y), 
-                        Vec2::new(rx as isize, y),
-                        col
-                    );
-                }
-            }*/
+        if xac[m] < xabc[m] {
+            xl = xac; xr = xabc;
+            zl = zac; zr = zabc;
+        } else {
+            xl = xabc; xr = xac;
+            zl = zabc; zr = zac;
         }
 
-        //self.draw_line(*a, *b, [0, 0, 0, 255]);
-        //self.draw_line(*b, *c, [0, 0, 0, 255]);
-        //self.draw_line(*a, *c, [0, 0, 0, 255]);
-    }
+        for y in a.y..=c.y {
+            if y - a.y >= zl.len() as isize || y - a.y >= zr.len() as isize { continue }
 
+            let xlp = xl[(y - a.y) as usize];
+            let xrp = xr[(y - a.y) as usize];
+            
+            let zint = utils::interpolate(xlp as isize, zl[(y - a.y) as usize], xrp as isize, zr[(y - a.y) as usize]);
+            for x in xlp as usize..xrp as usize {
+                self.zbuffer.set(x as isize, y, CZ::new(mult_rgba(col, zint[x - xlp as usize]), INFINITY));
+            }
+        }
+    }
+    
     fn render_prim(&mut self, i: &Prim) {
         for t in i.tris.iter() {
             self.render_tri(t, [rand::thread_rng().gen_range(0..=255), rand::thread_rng().gen_range(0..=255), rand::thread_rng().gen_range(0..=255), 255])
@@ -345,8 +266,6 @@ impl Vec3 {
     }
 }
 
-type RGBA = [u8; 4];
-
 struct Tri {
     a: Vec3,
     b: Vec3,
@@ -394,21 +313,23 @@ impl World {
                 color: [0, 0, 0, 255],
             }],
             c: 0.,
-            cam: Camera::new(Vec3::new_i(0, 0, -2), Vec3::new_i(0, 0, 0), Vec3::new_i(0, 0, 200), 1.),
+            cam: Camera::new(Vec3::new_i(0, 0, -500), Vec3::new_i(0, 0, 0), Vec3::new_i(0, 0, 200), 1.),
         }
     }
 
     fn update(&mut self) {
-        self.c += 1.;
+        //self.c += 1.;
 
-        self.cam.translate_mut(0.001, 0.002, 0.);
+        //self.cam.translate_mut(0.001, 0.002, 0.);
     }
 
     fn draw(&self, frame: &mut [u8]) {
         let mut r = Canvas::new(&self.cam, ZBuffer::new());
 
-        r.render_prim(&get_cube());
-        r.render_prim(&get_cube().translate(1., 1., 0.));
+        //r.render_prim(&get_cube());
+        //r.render_prim(&get_cube().translate(1., 1., 0.));
+        r.render_tri(&Tri::new(Vec3::new(-200., -250., 0.3), Vec3::new(200., 50., 0.1), Vec3::new(20., 250., 1.0)), [0, 255, 0, 255]);
+        //r.render_tri(&Tri::new(Vec3::new(0., 0., 0.3), Vec3::new(1., 0., 0.1), Vec3::new(0., 1., 1.0)), [0, 255, 0, 255]);
 
         for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
             /*let rgba = [255, 255, 255, 255];
