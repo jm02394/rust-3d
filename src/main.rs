@@ -20,6 +20,7 @@ extern crate bresenham;
 use bresenham::Bresenham;
 
 mod utils;
+use utils::*;
 
 const WIDTH: u32 = 400;
 const HEIGHT: u32 = 300;
@@ -32,66 +33,78 @@ fn get_cube() -> Prim {
                 Vec3::new_i(1, 0, 0),
                 Vec3::new_i(0, 0, 0),
                 Vec3::new_i(0, 0, 1),
+                PURPLE,
             ),
             Tri::new(
                 Vec3::new_i(1, 0, 0),
                 Vec3::new_i(1, 0, 1),
                 Vec3::new_i(0, 0, 1),
+                PURPLE,
             ),
             //Front
             Tri::new(
                 Vec3::new_i(0, 0, 0),
                 Vec3::new_i(0, 1, 0),
                 Vec3::new_i(1, 1, 0),
+                RED,
             ),
             Tri::new(
                 Vec3::new_i(0, 0, 0),
                 Vec3::new_i(1, 0, 0),
                 Vec3::new_i(1, 1, 0),
+                RED,
             ),
             //Left
             Tri::new(
                 Vec3::new_i(0, 1, 0),
                 Vec3::new_i(0, 0, 0),
                 Vec3::new_i(0, 0, 1),
+                GREEN,
             ),
             Tri::new(
                 Vec3::new_i(0, 1, 0),
                 Vec3::new_i(0, 1, 1),
                 Vec3::new_i(0, 0, 1),
+                GREEN,
             ),
             //Back
             Tri::new(
                 Vec3::new_i(1, 0, 1),
                 Vec3::new_i(0, 0, 1),
                 Vec3::new_i(0, 1, 1),
+                TEAL,
             ),
             Tri::new(
                 Vec3::new_i(1, 0, 1),
                 Vec3::new_i(1, 1, 1),
                 Vec3::new_i(0, 1, 1),
+                TEAL,
             ),
             //Right
             Tri::new(
                 Vec3::new_i(1, 0, 0),
                 Vec3::new_i(1, 0, 1),
                 Vec3::new_i(1, 1, 1),
+                BLUE,
             ),
             Tri::new(
                 Vec3::new_i(1, 0, 0),
                 Vec3::new_i(1, 1, 0),
                 Vec3::new_i(1, 1, 1),
+                BLUE,
             ),
             //Top
             Tri::new(
                 Vec3::new_i(1, 1, 0),
                 Vec3::new_i(0, 1, 0),
                 Vec3::new_i(0, 1, 1),
+                YELLOW,
             ),
             Tri::new(
                 Vec3::new_i(1, 1, 0),
                 Vec3::new_i(1, 1, 1),
                 Vec3::new_i(0, 1, 1),
+                YELLOW,
             ),
         ],
     }
@@ -142,17 +155,6 @@ impl ZBuffer {
     }
 }
 
-type RGBA = [u8; 4];
-
-fn mult_rgba(inp: RGBA, f: f32) -> RGBA {
-    [
-        (inp[0] as f32 * f) as u8,
-        (inp[1] as f32 * f) as u8,
-        (inp[2] as f32 * f) as u8,
-        inp[3],
-    ]
-}
-
 struct Canvas<'a> {
     cam: &'a Camera,
     zbuffer: ZBuffer,
@@ -178,7 +180,13 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    fn render_tri(&mut self, a: &mut Vec3, b: &mut Vec3, c: &mut Vec3, col: RGBA) {
+    fn render_tri(&mut self, t: Tri) {
+        let (a, b, c) = (
+            &mut t.a.project(&self.cam),
+            &mut t.b.project(&self.cam),
+            &mut t.c.project(&self.cam),
+        );
+
         if b.y < a.y {
             mem::swap(b, a);
         };
@@ -189,20 +197,20 @@ impl<'a> Canvas<'a> {
             mem::swap(c, b);
         };
 
-        let mut xab = utils::interpolate(a.y, a.x as f32, b.y, b.x as f32);
-        let mut zab = utils::interpolate(a.y, a.z, b.y, b.z);
+        let mut xab = interpolate_i(a.y, a.x as f32, b.y, b.x as f32);
+        let mut zab = interpolate_i(a.y, t.a.z, b.y, t.b.z);
 
-        let xbc = utils::interpolate(b.y, b.x as f32, c.y, c.x as f32);
-        let zbc = utils::interpolate(b.y, b.z, c.y, c.z);
+        let xbc = interpolate_i(b.y, b.x as f32, c.y, c.x as f32);
+        let zbc = interpolate_i(b.y, t.b.z, c.y, t.c.z);
 
-        let xac = utils::interpolate(a.y, a.x as f32, c.y, c.x as f32);
-        let zac = utils::interpolate(a.y, a.z, c.y, c.z);
+        let xac = interpolate_i(a.y, a.x as f32, c.y, c.x as f32);
+        let zac = interpolate_i(a.y, t.a.z, c.y, t.c.z);
 
         xab.pop();
-        let xabc = utils::cat(&xab, &xbc);
+        let xabc = xab.into_iter().chain(xbc.into_iter()).collect::<Vec<_>>();
 
         zab.pop();
-        let zabc = utils::cat(&zab, &zbc);
+        let zabc = zab.into_iter().chain(zbc.into_iter()).collect::<Vec<_>>();
 
         let (xl, xr): (Vec<f32>, Vec<f32>);
         let (zl, zr): (Vec<f32>, Vec<f32>);
@@ -236,36 +244,26 @@ impl<'a> Canvas<'a> {
 
             //println!("{}, {}, {}", xlp, xrp, y);
 
-            let zint = utils::interpolate(xlp, zl[sub], xrp, zr[sub]);
+            let zint = interpolate(xlp, zl[sub], xrp, zr[sub]);
             for x in xlp as usize..xrp as usize {
                 if x >= WIDTH as usize || 0 > y || y >= HEIGHT as isize {
                     return;
                 }
                 if self.zbuffer.get(x, y as usize).z > zint[x - xlp as usize] as f64 {
                     self.zbuffer
-                        .set(x as isize, y, CZ::new(col, zint[x - xlp as usize] as f64));
+                        .set(x as isize, y, CZ::new(t.col, zint[x - xlp as usize] as f64));
                 }
             }
         }
     }
 
-    fn render_prim(&mut self, i: &Prim, col: RGBA) {
+    fn render_prim(&mut self, i: &Prim) {
         for t in i.tris.iter() {
-            let (ap, bp, cp) = (
-                &mut t.a.project(&self.cam),
-                &mut t.b.project(&self.cam),
-                &mut t.c.project(&self.cam),
-            );
-            self.render_tri(
-                &mut Vec3::new(ap.x as f32, ap.y as f32, t.a.z),
-                &mut Vec3::new(bp.x as f32, bp.y as f32, t.b.z),
-                &mut Vec3::new(cp.x as f32, cp.y as f32, t.c.z),
-                col,
-            )
+            self.render_tri(*t);
         }
     }
 
-    fn render_prim_cols(&mut self, i: &Prim, cols: [RGBA; 16]) {
+    /*fn render_prim_cols(&mut self, i: &Prim, cols: Vec<RGBA>) {
         for (ti, t) in i.tris.iter().enumerate() {
             let (ap, bp, cp) = (
                 &mut t.a.project(&self.cam),
@@ -279,7 +277,7 @@ impl<'a> Canvas<'a> {
                 cols[ti],
             )
         }
-    }
+    }*/
 }
 
 struct Camera {
@@ -374,21 +372,17 @@ impl Vec3 {
     }
 }
 
+#[derive(PartialEq, Clone, Copy)]
 struct Tri {
     a: Vec3,
     b: Vec3,
     c: Vec3,
-    color: RGBA,
+    col: RGBA,
 }
 
 impl Tri {
-    fn new(a: Vec3, b: Vec3, c: Vec3) -> Self {
-        Self {
-            a,
-            b,
-            c,
-            color: [0, 0, 0, 255],
-        }
+    fn new(a: Vec3, b: Vec3, c: Vec3, col: RGBA) -> Self {
+        Self { a, b, c, col }
     }
 
     fn translate(&self, x: f32, y: f32, z: f32) -> Self {
@@ -396,7 +390,7 @@ impl Tri {
             a: self.a.translate(x, y, z),
             b: self.b.translate(x, y, z),
             c: self.c.translate(x, y, z),
-            color: self.color,
+            col: self.col,
         }
     }
 }
@@ -416,7 +410,6 @@ impl Prim {
 }
 
 struct World {
-    tris: Vec<Tri>,
     c: f32,
     cols: [RGBA; 16],
     cam: Camera,
@@ -435,12 +428,6 @@ impl World {
         }
 
         Self {
-            tris: vec![Tri {
-                a: Vec3::new_i(0, 0, 0),
-                b: Vec3::new_i(1, 0, 0),
-                c: Vec3::new_i(1, 1, 0),
-                color: [0, 0, 0, 255],
-            }],
             c: 0.,
             cols: colarray,
             cam: Camera::new(
@@ -461,8 +448,8 @@ impl World {
     fn draw(&self, frame: &mut [u8]) {
         let mut r = Canvas::new(&self.cam, ZBuffer::new());
 
-        r.render_prim_cols(&get_cube(), self.cols);
-        r.render_prim_cols(&get_cube().translate(1., 1., 0.), self.cols);
+        r.render_prim(&get_cube());
+        r.render_prim(&get_cube().translate(1., 1., 0.));
         //r.render_tri(&Tri::new(Vec3::new(-200., -250., 0.3), Vec3::new(200., 50., 0.1), Vec3::new(20., 250., 1.0)), [0, 255, 0, 255]);
         //r.render_tri(&Tri::new(Vec3::new(0., 0., 0.3), Vec3::new(1., 0., 0.1), Vec3::new(0., 1., 1.0)), [0, 255, 0, 255]);
 
