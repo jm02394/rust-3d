@@ -186,25 +186,29 @@ impl<'a> Canvas<'a> {
             &mut t.b.project(&self.cam),
             &mut t.c.project(&self.cam),
         );
+        let (mut az, mut bz, mut cz) = (t.a.z, t.b.z, t.c.z);
 
         if b.y < a.y {
             mem::swap(b, a);
+            mem::swap(&mut bz, &mut az);
         };
         if c.y < a.y {
             mem::swap(c, a);
+            mem::swap(&mut cz, &mut az);
         };
         if c.y < b.y {
             mem::swap(c, b);
+            mem::swap(&mut cz, &mut bz);
         };
 
         let mut xab = interpolate_i(a.y, a.x as f32, b.y, b.x as f32);
-        let mut zab = interpolate_i(a.y, t.a.z, b.y, t.b.z);
+        let mut zab = interpolate_i(a.y, az, b.y, bz);
 
         let xbc = interpolate_i(b.y, b.x as f32, c.y, c.x as f32);
-        let zbc = interpolate_i(b.y, t.b.z, c.y, t.c.z);
+        let zbc = interpolate_i(b.y, bz, c.y, cz);
 
         let xac = interpolate_i(a.y, a.x as f32, c.y, c.x as f32);
-        let zac = interpolate_i(a.y, t.a.z, c.y, t.c.z);
+        let zac = interpolate_i(a.y, az, c.y, cz);
 
         xab.pop();
         let xabc = xab.into_iter().chain(xbc.into_iter()).collect::<Vec<_>>();
