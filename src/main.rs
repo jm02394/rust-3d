@@ -188,6 +188,11 @@ impl<'a> Canvas<'a> {
         );
         let (mut az, mut bz, mut cz) = (t.a.z, t.b.z, t.c.z);
 
+        let mut b_is_neg = false;
+        if b.y < 0 {
+            b_is_neg = true;
+        }
+
         if b.y < a.y {
             mem::swap(b, a);
             mem::swap(&mut bz, &mut az);
@@ -241,7 +246,7 @@ impl<'a> Canvas<'a> {
                 continue;
             }
 
-            let sub = (y - a.y as isize) as usize;
+            let sub = (y - a.y) as usize;
 
             let xlp = xl[sub];
             let xrp = xr[sub];
@@ -251,8 +256,9 @@ impl<'a> Canvas<'a> {
             let zint = interpolate(xlp, zl[sub], xrp, zr[sub]);
             for x in xlp as usize..xrp as usize {
                 if x >= WIDTH as usize || 0 > y || y >= HEIGHT as isize {
-                    return;
+                    continue;
                 }
+
                 if self.zbuffer.get(x, y as usize).z > zint[x - xlp as usize] as f64 {
                     self.zbuffer
                         .set(x as isize, y, CZ::new(t.col, zint[x - xlp as usize] as f64));
@@ -288,7 +294,7 @@ struct Camera {
     pos: Vec3,
     rot: Vec3,
     proj: Vec3,
-    sc: f32,
+    sc: f32, //scale
 }
 
 impl Camera {
@@ -435,8 +441,8 @@ impl World {
             c: 0.,
             cols: colarray,
             cam: Camera::new(
-                Vec3::new_i(0, 0, -2),
-                Vec3::new_i(0, 0, 0),
+                Vec3::new(0., 1.5, -2.),
+                Vec3::new(radians(-30.), radians(30.), 0.),
                 Vec3::new_i(0, 0, 200),
                 1.,
             ),
@@ -446,7 +452,7 @@ impl World {
     fn update(&mut self) {
         self.c += 1.;
 
-        self.cam.translate_mut(0.001, 0.002, 0.);
+        //self.cam.translate_mut(0.001, 0.002, 0.);
     }
 
     fn draw(&self, frame: &mut [u8]) {

@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 pub type RGBA = [u8; 4];
 
 pub const BLACK: RGBA = [0, 0, 0, 255];
@@ -16,6 +18,10 @@ pub fn mult_rgba(inp: RGBA, f: f32) -> RGBA {
         (inp[2] as f32 * f) as u8,
         inp[3],
     ]
+}
+
+pub fn radians(inp: f32) -> f32 {
+    PI / 180. * inp
 }
 
 pub fn interpolate(i0: f32, d0: f32, i1: f32, d1: f32) -> Vec<f32> {
