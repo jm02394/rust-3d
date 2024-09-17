@@ -10,13 +10,12 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use core::f64::INFINITY;
+use core::f32::{INFINITY, NEG_INFINITY};
 
 use std::mem;
 
 use rand::Rng;
 
-extern crate bresenham;
 use bresenham::Bresenham;
 
 mod utils;
@@ -113,11 +112,11 @@ fn get_cube() -> Prim {
 #[derive(Clone, Copy)]
 struct CZ {
     c: RGBA,
-    z: f64,
+    z: f32,
 }
 
 impl CZ {
-    fn new(c: RGBA, z: f64) -> Self {
+    fn new(c: RGBA, z: f32) -> Self {
         Self { c, z }
     }
 }
@@ -144,14 +143,18 @@ impl ZBuffer {
         }
     }
 
-    fn set(&mut self, x: isize, y: isize, cz: CZ) {
-        if !(0 > x || x >= WIDTH as isize || 0 > y || y >= HEIGHT as isize) {
+    fn set(&mut self, x: i32, y: i32, cz: CZ) {
+        if !(0 > x || x >= WIDTH as i32 || 0 > y || y >= HEIGHT as i32) {
             self.b[x as usize][y as usize] = cz;
         }
     }
 
-    fn get(&self, x: usize, y: usize) -> CZ {
-        self.b[x][y]
+    fn get(&self, x: i32, y: i32) -> Option<CZ> {
+        if !(0 > x || x >= WIDTH as i32 || 0 > y || y >= HEIGHT as i32) {
+            Some(self.b[x as usize][y as usize])
+        } else {
+            None
+        }
     }
 }
 
@@ -165,18 +168,18 @@ impl<'a> Canvas<'a> {
         Self { cam, zbuffer }
     }
 
-    /*fn draw_px(&mut self, x: isize, y: isize, col: RGBA) {
-        if 0 > x || x >= WIDTH as isize || 0 > y || y >= HEIGHT as isize {
+    /*fn draw_px(&mut self, x: i32, y: i32, col: RGBA) {
+        if 0 > x || x >= WIDTH as i32 || 0 > y || y >= HEIGHT as i32 {
             return
         }
-        let i = (x * 4 + y * WIDTH as isize * 4) as usize;
+        let i = (x * 4 + y * WIDTH as i32 * 4) as usize;
         self.frame[i..i + 4].copy_from_slice(&col);
     }*/
 
     fn draw_line(&mut self, a: Vec2, b: Vec2, col: RGBA) {
         for (x, y) in Bresenham::new((a.x as isize, a.y as isize), (b.x as isize, b.y as isize)) {
             //self.draw_px(x, y, col);
-            self.zbuffer.set(x, y, CZ::new(col, 0.));
+            self.zbuffer.set(x as i32, y as i32, CZ::new(col, 0.));
         }
     }
 
@@ -186,12 +189,12 @@ impl<'a> Canvas<'a> {
             &mut t.b.project(&self.cam),
             &mut t.c.project(&self.cam),
         );
-        let (mut az, mut bz, mut cz) = (t.a.z, t.b.z, t.c.z);
 
-        let mut b_is_neg = false;
-        if b.y < 0 {
-            b_is_neg = true;
+        if !(a.is_inbounds() || b.is_inbounds() || c.is_inbounds()) {
+            return;
         }
+
+        let (mut az, mut bz, mut cz) = (t.a.z, t.b.z, t.c.z);
 
         if b.y < a.y {
             mem::swap(b, a);
@@ -241,8 +244,13 @@ impl<'a> Canvas<'a> {
             zr = zac;
         }
 
-        for y in a.y as isize..=c.y as isize {
-            if y - a.y as isize >= zl.len() as isize || y - a.y as isize >= zr.len() as isize {
+        for y in a.y..=c.y {
+            println!("{}", y);
+            /*if 0 > y || y >= HEIGHT as i32 {
+                continue;
+            }*/
+
+            if y - a.y >= zl.len() as i32 || y - a.y >= zr.len() as i32 {
                 continue;
             }
 
@@ -254,17 +262,34 @@ impl<'a> Canvas<'a> {
             //println!("{}, {}, {}", xlp, xrp, y);
 
             let zint = interpolate(xlp, zl[sub], xrp, zr[sub]);
-            for x in xlp as usize..xrp as usize {
-                if x >= WIDTH as usize || 0 > y || y >= HEIGHT as isize {
+
+            /*for z in &zint {
+                println!("{}", z);
+            }
+            println!("");*/
+
+            for x in xlp as i32..xrp as i32 {
+                /*if !(0 < x && x < WIDTH as i32) {
                     continue;
+                }*/
+
+                let current_pos = Vec2::new(x, y);
+                if current_pos == *a || current_pos == *b || current_pos == *c {
+                    println!("winning");
                 }
 
-                if self.zbuffer.get(x, y as usize).z > zint[x - xlp as usize] as f64 {
-                    self.zbuffer
-                        .set(x as isize, y, CZ::new(t.col, zint[x - xlp as usize] as f64));
+                if let Some(z_buffer_result) = self.zbuffer.get(x, y) {
+                    if z_buffer_result.z > zint[x as usize - xlp as usize] {
+                        self.zbuffer
+                            .set(x, y, CZ::new(t.col, zint[x as usize - xlp as usize]));
+                    }
                 }
             }
         }
+
+        /*self.zbuffer.set(a.x, a.y, CZ::new(BLACK, NEG_INFINITY));
+        self.zbuffer.set(b.x, b.y, CZ::new(BLACK, NEG_INFINITY));
+        self.zbuffer.set(c.x, c.y, CZ::new(BLACK, NEG_INFINITY));*/
     }
 
     fn render_prim(&mut self, i: &Prim) {
@@ -309,13 +334,17 @@ impl Camera {
 
 #[derive(PartialEq, Clone, Copy)]
 struct Vec2 {
-    x: isize,
-    y: isize,
+    x: i32,
+    y: i32,
 }
 
 impl Vec2 {
-    fn new(x: isize, y: isize) -> Self {
+    fn new(x: i32, y: i32) -> Self {
         Self { x, y }
+    }
+
+    fn is_inbounds(&self) -> bool {
+        0 < self.x && self.x < WIDTH as i32 && 0 < self.y && self.y < HEIGHT as i32
     }
 }
 
@@ -376,8 +405,8 @@ impl Vec3 {
         let by = e.z / dz * dy + e.y;
 
         Vec2 {
-            x: (WIDTH as f32 / 2. + bx * cam.sc).floor() as isize,
-            y: (HEIGHT as f32 / 2. + by * cam.sc).floor() as isize,
+            x: (WIDTH as f32 / 2. + bx * cam.sc).floor() as i32,
+            y: (HEIGHT as f32 / 2. + by * cam.sc).floor() as i32,
         }
     }
 }
@@ -452,7 +481,9 @@ impl World {
     fn update(&mut self) {
         self.c += 1.;
 
-        //self.cam.translate_mut(0.001, 0.002, 0.);
+        self.cam.translate_mut(0.003, 0.002, 0.); //y: 0.002
+
+        println!("");
     }
 
     fn draw(&self, frame: &mut [u8]) {
@@ -460,6 +491,12 @@ impl World {
 
         r.render_prim(&get_cube());
         r.render_prim(&get_cube().translate(1., 1., 0.));
+        /*r.render_tri(Tri::new(
+            Vec3::new(1., 1., 0.),
+            Vec3::new(2., 1., 0.),
+            Vec3::new(1., 2., 0.),
+            RED,
+        ));*/
         //r.render_tri(&Tri::new(Vec3::new(-200., -250., 0.3), Vec3::new(200., 50., 0.1), Vec3::new(20., 250., 1.0)), [0, 255, 0, 255]);
         //r.render_tri(&Tri::new(Vec3::new(0., 0., 0.3), Vec3::new(1., 0., 0.1), Vec3::new(0., 1., 1.0)), [0, 255, 0, 255]);
 
@@ -471,9 +508,11 @@ impl World {
             let x = i % WIDTH as usize;
             let y = i / WIDTH as usize;
 
-            pixel.copy_from_slice(&r.zbuffer.get(x, y).c);
+            if let Some(z_buffer_result) = r.zbuffer.get(x as i32, y as i32) {
+                pixel.copy_from_slice(&z_buffer_result.c);
+            }
 
-            //r.draw_px(x as isize, y as isize, r.zbuffer.get(x, y));
+            //r.draw_px(x as i32, y as i32, r.zbuffer.get(x, y));
         }
     }
 }

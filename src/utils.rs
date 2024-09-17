@@ -33,7 +33,7 @@ pub fn interpolate(i0: f32, d0: f32, i1: f32, d1: f32) -> Vec<f32> {
 
     let a = (d1 - d0) as f32 / (i1 - i0) as f32;
     let mut d = d0 as f32;
-    for _ in i0 as u32..i1 as u32 {
+    for _ in i0 as i32..=i1 as i32 {
         out.push(d);
         d += a;
     }
@@ -41,7 +41,7 @@ pub fn interpolate(i0: f32, d0: f32, i1: f32, d1: f32) -> Vec<f32> {
     out
 }
 
-pub fn interpolate_i(i0: isize, d0: f32, i1: isize, d1: f32) -> Vec<f32> {
+pub fn interpolate_i(i0: i32, d0: f32, i1: i32, d1: f32) -> Vec<f32> {
     interpolate(i0 as f32, d0, i1 as f32, d1)
 }
 
