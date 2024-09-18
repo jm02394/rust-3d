@@ -13,6 +13,7 @@ use winit_input_helper::WinitInputHelper;
 use core::f32::{INFINITY, NEG_INFINITY};
 
 use std::mem;
+use std::time::Instant;
 
 use rand::Rng;
 
@@ -23,6 +24,9 @@ use utils::*;
 
 const WIDTH: u32 = 400;
 const HEIGHT: u32 = 300;
+
+const MOVE_SCALE: f32 = 0.05;
+const ROT_SCALE: f32 = 0.07;
 
 fn get_cube() -> Prim {
     Prim {
@@ -184,7 +188,7 @@ impl<'a> Canvas<'a> {
     }
 
     fn render_tri(&mut self, t: Tri) {
-        let (a, b, c) = (
+        let ((a, mut az), (b, mut bz), (c, mut cz)) = (
             &mut t.a.project(&self.cam),
             &mut t.b.project(&self.cam),
             &mut t.c.project(&self.cam),
@@ -194,7 +198,7 @@ impl<'a> Canvas<'a> {
             return;
         }
 
-        let (mut az, mut bz, mut cz) = (t.a.z, t.b.z, t.c.z);
+        //let (mut az, mut bz, mut cz) = (t.a.z, t.b.z, t.c.z);
 
         if b.y < a.y {
             mem::swap(b, a);
@@ -245,11 +249,6 @@ impl<'a> Canvas<'a> {
         }
 
         for y in a.y..=c.y {
-            println!("{}", y);
-            /*if 0 > y || y >= HEIGHT as i32 {
-                continue;
-            }*/
-
             if y - a.y >= zl.len() as i32 || y - a.y >= zr.len() as i32 {
                 continue;
             }
@@ -259,24 +258,15 @@ impl<'a> Canvas<'a> {
             let xlp = xl[sub];
             let xrp = xr[sub];
 
-            //println!("{}, {}, {}", xlp, xrp, y);
-
+            //println!("{}, {}, {}, {}", xlp, zl[sub], xrp, zr[sub]);
             let zint = interpolate(xlp, zl[sub], xrp, zr[sub]);
-
-            /*for z in &zint {
-                println!("{}", z);
-            }
-            println!("");*/
+            //println!("{:?}", zint);
+            //std::process::exit(0);
 
             for x in xlp as i32..xrp as i32 {
                 /*if !(0 < x && x < WIDTH as i32) {
                     continue;
                 }*/
-
-                let current_pos = Vec2::new(x, y);
-                if current_pos == *a || current_pos == *b || current_pos == *c {
-                    println!("winning");
-                }
 
                 if let Some(z_buffer_result) = self.zbuffer.get(x, y) {
                     if z_buffer_result.z > zint[x as usize - xlp as usize] {
@@ -287,9 +277,9 @@ impl<'a> Canvas<'a> {
             }
         }
 
-        /*self.zbuffer.set(a.x, a.y, CZ::new(BLACK, NEG_INFINITY));
+        self.zbuffer.set(a.x, a.y, CZ::new(BLACK, NEG_INFINITY));
         self.zbuffer.set(b.x, b.y, CZ::new(BLACK, NEG_INFINITY));
-        self.zbuffer.set(c.x, c.y, CZ::new(BLACK, NEG_INFINITY));*/
+        self.zbuffer.set(c.x, c.y, CZ::new(BLACK, NEG_INFINITY));
     }
 
     fn render_prim(&mut self, i: &Prim) {
@@ -380,7 +370,8 @@ impl Vec3 {
         }
     }
 
-    fn project(&self, cam: &Camera) -> Vec2 {
+    fn project(&self, cam: &Camera) -> (Vec2, f32) {
+        // (projected Vec2, z-depth)
         let c = &cam.pos;
         let r = &cam.rot;
         let e = &cam.proj;
@@ -404,10 +395,16 @@ impl Vec3 {
         let bx = e.z / dz * dx + e.x;
         let by = e.z / dz * dy + e.y;
 
-        Vec2 {
-            x: (WIDTH as f32 / 2. + bx * cam.sc).floor() as i32,
-            y: (HEIGHT as f32 / 2. + by * cam.sc).floor() as i32,
-        }
+        let d =
+            ((c.x - self.x).powf(2.) + (c.y - self.y).powf(2.) + (c.z - self.z).powf(2.)).sqrt();
+
+        (
+            Vec2 {
+                x: (WIDTH as f32 / 2. + bx * cam.sc).floor() as i32,
+                y: (HEIGHT as f32 / 2. + by * cam.sc).floor() as i32,
+            },
+            d,
+        )
     }
 }
 
@@ -470,8 +467,8 @@ impl World {
             c: 0.,
             cols: colarray,
             cam: Camera::new(
-                Vec3::new(0., 1.5, -2.),
-                Vec3::new(radians(-30.), radians(30.), 0.),
+                Vec3::new(0., 0., -2.),                           //Vec3::new(0., 1.5, -2.),
+                Vec3::new(radians(0.), radians(0.), radians(0.)), //Vec3::new(radians(-30.), radians(30.), 0.),
                 Vec3::new_i(0, 0, 200),
                 1.,
             ),
@@ -481,9 +478,7 @@ impl World {
     fn update(&mut self) {
         self.c += 1.;
 
-        self.cam.translate_mut(0.003, 0.002, 0.); //y: 0.002
-
-        println!("");
+        //self.cam.translate_mut(0.003, 0.002, 0.); //y: 0.002
     }
 
     fn draw(&self, frame: &mut [u8]) {
@@ -539,10 +534,16 @@ fn main() -> Result<(), Error> {
     };
     let mut world = World::new();
 
+    let mut last_frame_time = Instant::now();
+
     event_loop.run(move |event, _, control_flow| {
         // Draw the current frame
         if let Event::RedrawRequested(_) = event {
+            println!("{:?}", 1000 / last_frame_time.elapsed().as_millis());
+            last_frame_time = Instant::now();
+
             world.draw(pixels.get_frame());
+
             if pixels
                 .render()
                 .map_err(|e| error!("pixels.render() failed: {}", e))
@@ -553,12 +554,53 @@ fn main() -> Result<(), Error> {
             }
         }
 
+        let mut move_mod = 1.;
+
         // Handle input events
         if input.update(&event) {
             // Close events
             if input.key_pressed(VirtualKeyCode::Escape) || input.quit() {
                 *control_flow = ControlFlow::Exit;
                 return;
+            }
+            if input.key_held(VirtualKeyCode::LShift) {
+                move_mod = 2.;
+            }
+            if input.key_held(VirtualKeyCode::Down) {
+                world.cam.rot.x += radians(-10.) * ROT_SCALE;
+            }
+            if input.key_held(VirtualKeyCode::Up) {
+                world.cam.rot.x += radians(10.) * ROT_SCALE;
+            }
+            if input.key_held(VirtualKeyCode::Left) {
+                world.cam.rot.y += radians(-10.) * ROT_SCALE;
+            }
+            if input.key_held(VirtualKeyCode::Right) {
+                world.cam.rot.y += radians(10.) * ROT_SCALE;
+            }
+            if input.key_held(VirtualKeyCode::W) {
+                world.cam.pos.x += world.cam.rot.y.sin() * MOVE_SCALE * move_mod; //world.cam.pos.z += 0.5;
+                world.cam.pos.y += world.cam.rot.x.sin() * MOVE_SCALE * move_mod;
+                world.cam.pos.z += world.cam.rot.y.cos() * MOVE_SCALE * move_mod;
+            }
+            if input.key_held(VirtualKeyCode::S) {
+                world.cam.pos.x -= world.cam.rot.y.sin() * MOVE_SCALE * move_mod; //world.cam.pos.z += -0.5;
+                world.cam.pos.y -= world.cam.rot.x.sin() * MOVE_SCALE * move_mod;
+                world.cam.pos.z -= world.cam.rot.y.cos() * MOVE_SCALE * move_mod;
+            }
+            if input.key_held(VirtualKeyCode::A) {
+                world.cam.pos.x -= world.cam.rot.y.cos() * MOVE_SCALE * move_mod; //world.cam.pos.x += -0.5;
+                world.cam.pos.z += world.cam.rot.y.sin() * MOVE_SCALE * move_mod;
+            }
+            if input.key_held(VirtualKeyCode::D) {
+                world.cam.pos.x += world.cam.rot.y.cos() * MOVE_SCALE * move_mod; //world.cam.pos.x += 0.5;
+                world.cam.pos.z -= world.cam.rot.y.sin() * MOVE_SCALE * move_mod;
+            }
+            if input.key_held(VirtualKeyCode::E) {
+                world.cam.pos.y += MOVE_SCALE;
+            }
+            if input.key_held(VirtualKeyCode::Q) {
+                world.cam.pos.y += -MOVE_SCALE;
             }
 
             // Resize the window
