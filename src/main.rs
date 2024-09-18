@@ -26,7 +26,7 @@ const WIDTH: u32 = 400;
 const HEIGHT: u32 = 300;
 
 const MOVE_SCALE: f32 = 0.05;
-const ROT_SCALE: f32 = 0.07;
+const ROT_SCALE: f32 = 0.1;
 
 fn get_cube() -> Prim {
     Prim {
@@ -249,29 +249,26 @@ impl<'a> Canvas<'a> {
         }
 
         for y in a.y..=c.y {
-            if y - a.y >= zl.len() as i32 || y - a.y >= zr.len() as i32 {
+            let sub = (y - a.y) as usize;
+
+            if sub >= zl.len() || sub >= zr.len() {
                 continue;
             }
-
-            let sub = (y - a.y) as usize;
 
             let xlp = xl[sub];
             let xrp = xr[sub];
 
             //println!("{}, {}, {}, {}", xlp, zl[sub], xrp, zr[sub]);
-            let zint = interpolate(xlp, zl[sub], xrp, zr[sub]);
+            //let zint = interpolate(xlp, zl[sub], xrp, zr[sub]);
             //println!("{:?}", zint);
             //std::process::exit(0);
 
-            for x in xlp as i32..xrp as i32 {
-                /*if !(0 < x && x < WIDTH as i32) {
-                    continue;
-                }*/
+            let zint = |x: i32| ((zr[sub] - zl[sub]) / (xrp - xlp)) * x as f32 + zl[sub];
 
+            for x in 0..(xrp - xlp) as i32 {
                 if let Some(z_buffer_result) = self.zbuffer.get(x, y) {
-                    if z_buffer_result.z > zint[x as usize - xlp as usize] {
-                        self.zbuffer
-                            .set(x, y, CZ::new(t.col, zint[x as usize - xlp as usize]));
+                    if z_buffer_result.z > zint(x) {
+                        self.zbuffer.set(xlp as i32 + x, y, CZ::new(t.col, zint(x)));
                     }
                 }
             }
@@ -534,13 +531,13 @@ fn main() -> Result<(), Error> {
     };
     let mut world = World::new();
 
-    let mut last_frame_time = Instant::now();
+    //let mut last_frame_time = Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
         // Draw the current frame
         if let Event::RedrawRequested(_) = event {
-            println!("{:?}", 1000 / last_frame_time.elapsed().as_millis());
-            last_frame_time = Instant::now();
+            //println!("FPS: {:?}", 1000 / last_frame_time.elapsed().as_millis());
+            //last_frame_time = Instant::now();
 
             world.draw(pixels.get_frame());
 
