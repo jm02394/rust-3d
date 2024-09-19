@@ -477,7 +477,7 @@ impl Vec3 {
         Self::new(self.x + other.x, self.y + other.y, self.z + other.z)
     }
 
-    fn rotated_single_axis(o1: f32, o2: f32, s1: f32, s2: f32, rot: f32) -> (f32, f32) {
+    fn rotated_single_axis(o1: f32, o2: f32, s1: f32, s2: f32, rot: f32) -> f32 {
         let d1 = s1 - o1;
         let d2 = s2 - o2;
 
@@ -493,23 +493,23 @@ impl Vec3 {
         } else {
             (d2 / d1).atan()
         };
-        let r = div + rot + {
+        div + rot + {
             if s1 > o1 {
                 radians(180.)
             } else {
                 0.
             }
-        };
-
-        (o1 - d * r.cos(), o2 - d * r.sin())
+        }
     }
 
     fn rotated_around(&self, origin: &Vec3, rot: &Vec3) -> Self {
-        let (rx_y, rx_z) = Self::rotated_single_axis(origin.y, origin.z, self.y, self.z, rot.x);
-        let (ry_x, ry_z) = Self::rotated_single_axis(origin.x, origin.z, self.x, self.z, rot.y);
-        let (rz_x, rz_y) = Self::rotated_single_axis(origin.x, origin.y, self.x, self.y, rot.z);
+        let d = origin.distance(self);
 
-        Self::new(ry_x, self.y, ry_z)
+        let rx = Self::rotated_single_axis(origin.y, origin.z, self.y, self.z, rot.x);
+        let ry = Self::rotated_single_axis(origin.x, origin.z, self.x, self.z, rot.y);
+        let rz = Self::rotated_single_axis(origin.x, origin.y, self.x, self.y, rot.z);
+
+        Self::new((ry.cos()) * d, self.y, (ry.sin()) * d)
     }
 
     fn rotated_around_old(&self, origin: &Vec3, rot: &Vec3) -> Self {
