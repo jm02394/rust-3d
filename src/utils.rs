@@ -64,3 +64,7 @@ pub fn max(n1: f32, n2: f32) -> f32 {
         n1
     }
 }
+
+pub fn kill() {
+    std::process::exit(0);
+}
