@@ -477,7 +477,7 @@ impl Vec3 {
         Self::new(self.x + other.x, self.y + other.y, self.z + other.z)
     }
 
-    fn rotated_single_axis(o1: f32, o2: f32, s1: f32, s2: f32, rot: f32) -> f32 {
+    fn rotated_single_axis(o1: f32, o2: f32, s1: f32, s2: f32, rot: f32) -> (f32, f32) {
         let d1 = s1 - o1;
         let d2 = s2 - o2;
 
@@ -493,23 +493,31 @@ impl Vec3 {
         } else {
             (d2 / d1).atan()
         };
-        div + rot + {
+        let r = div + rot + {
             if s1 > o1 {
                 radians(180.)
             } else {
                 0.
             }
-        }
+        };
+
+        (d * r.cos(), d * r.sin())
     }
 
     fn rotated_around(&self, origin: &Vec3, rot: &Vec3) -> Self {
-        let d = origin.distance(self);
+        if rot == &Vec3::new_i(0, 0, 0) {
+            return *self;
+        }
 
-        let rx = Self::rotated_single_axis(origin.y, origin.z, self.y, self.z, rot.x);
-        let ry = Self::rotated_single_axis(origin.x, origin.z, self.x, self.z, rot.y);
-        let rz = Self::rotated_single_axis(origin.x, origin.y, self.x, self.y, rot.z);
+        let (rx_y, rx_z) = Self::rotated_single_axis(origin.y, origin.z, self.y, self.z, rot.x);
+        let (ry_x, ry_z) = Self::rotated_single_axis(origin.x, origin.z, self.x, self.z, rot.y);
+        let (rz_x, rz_y) = Self::rotated_single_axis(origin.x, origin.y, self.x, self.y, rot.z);
 
-        Self::new((ry.cos()) * d, self.y, (ry.sin()) * d)
+        Self::new(
+            -(self.x + ry_x + rz_x),
+            -(self.y + rx_y + rz_y),
+            -(self.z + rx_z + ry_z),
+        )
     }
 
     fn rotated_around_old(&self, origin: &Vec3, rot: &Vec3) -> Self {
@@ -663,6 +671,9 @@ impl World {
 
     fn update(&mut self) {
         self.c += 1.;
+        if self.c == 360. {
+            self.c = 0.
+        }
 
         //self.cam.translate_mut(0.003, 0.002, 0.); //y: 0.002
     }
@@ -696,26 +707,33 @@ impl World {
         );*/
         //kill();
         //std::process::exit(0);
-        r.render_prim(&get_cube().rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)));
+
+        let rot_fac = if self.c < 180. {
+            Vec3::new(0., radians(self.c), 0.)
+        } else {
+            ORIGIN
+        };
+
+        r.render_prim(&get_cube().rotated_around(&ORIGIN, &rot_fac));
         r.render_prim(
             &get_cube()
                 .translated(1., 1., 0.)
-                .rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
+                .rotated_around(&ORIGIN, &rot_fac),
         );
         r.render_prim(
             &get_cube()
                 .translated(2., 2., 0.)
-                .rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
+                .rotated_around(&ORIGIN, &rot_fac),
         );
         r.render_prim(
             &get_cube()
                 .translated(3., 3., 0.)
-                .rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
+                .rotated_around(&ORIGIN, &rot_fac),
         );
         r.render_prim(
             &get_cube()
                 .translated(4., 4., 0.)
-                .rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
+                .rotated_around(&ORIGIN, &rot_fac),
         );
         r.render_line(&Line::new(
             Vec3::new_i(-AXIS_LEN, 0, 0),
