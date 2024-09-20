@@ -22,7 +22,7 @@ use bresenham::Bresenham;
 mod utils;
 use utils::*;
 
-const WIDTH: u32 = 400;
+const WIDTH: u32 = 300;
 const HEIGHT: u32 = 300;
 const ASPECT_RATIO: u32 = HEIGHT / WIDTH;
 
@@ -206,9 +206,9 @@ impl<'a> Canvas<'a> {
 
     fn render_tri(&mut self, t: Tri) {
         let ((a, mut az), (b, mut bz), (c, mut cz)) = (
-            &mut self.cam.project(&t.a),
-            &mut self.cam.project(&t.b),
-            &mut self.cam.project(&t.c),
+            &mut self.cam.projected(&t.a),
+            &mut self.cam.projected(&t.b),
+            &mut self.cam.projected(&t.c),
         );
 
         if !(a.is_inbounds() || b.is_inbounds() || c.is_inbounds()) {
@@ -310,8 +310,10 @@ impl<'a> Canvas<'a> {
     }
 
     fn render_line(&mut self, i: &Line) {
-        let ((sp, sz), (ep, ez)) = (self.cam.project(&i.start), self.cam.project(&i.end));
-        //self.draw_line(sp, ep, CZ::new(i.col, 100.));
+        let ((sp, sz), (ep, ez)) = (self.cam.projected(&i.start), self.cam.projected(&i.end));
+        /*if !(sp.is_inbounds() && ep.is_inbounds()) {
+            return;
+        }*/
 
         let points = Bresenham::new(
             (sp.x as isize, sp.y as isize),
@@ -328,7 +330,7 @@ impl<'a> Canvas<'a> {
     }
 
     fn render_point(&mut self, i: &Vec3) {
-        let (p, z) = self.cam.project(i);
+        let (p, z) = self.cam.projected(i);
 
         for dx in -1..=1 {
             for dy in -1..=1 {
@@ -359,7 +361,8 @@ struct Camera {
     rot: Vec3,
     proj: Vec3,
     sc: f32, //scale
-    focal: f32,
+    focal_length: f32,
+    view_angle: f32,
 }
 
 impl Camera {
@@ -369,7 +372,8 @@ impl Camera {
             rot,
             proj,
             sc,
-            focal: 1.,
+            focal_length: 1.,
+            view_angle: radians(20.),
         }
     }
 
@@ -377,10 +381,30 @@ impl Camera {
         self.pos = self.pos.translated(x, y, z);
     }
 
-    fn project(&self, vec: &Vec3) -> (Vec2, f32) {
+    fn projected(&self, vec: &Vec3) -> (Vec2, f32) {
         // (projected Vec2, z-depth)
         let c = &self.pos;
         let r = &self.rot;
+
+        let view_vec = vec
+            .translated_vec(&self.pos.inv())
+            .rotated_around(&ORIGIN, &self.rot);
+
+        /*let line_x = |z: f32| vec.x / vec.z * z;
+        let line_y = |z: f32| vec.y / vec.z * z;*/
+
+        let out = Vec2::new(
+            WIDTH as i32 / 2 + (view_vec.x / view_vec.z * self.focal_length * 100.).round() as i32,
+            HEIGHT as i32 / 2 - (view_vec.y / view_vec.z * self.focal_length * 100.).round() as i32,
+        );
+
+        (out, c.distance(vec))
+    }
+
+    fn projected_old(&self, vec: &Vec3) -> (Vec2, f32) {
+        // (projected Vec2, z-depth)
+        let c = &ORIGIN; //let c = &self.pos;
+        let r = &ORIGIN; //let r = &self.rot;
         let e = &self.proj;
 
         let xp = vec.x - c.x;
@@ -399,28 +423,28 @@ impl Camera {
             )
         };
 
-        /*// reverse translation, rotation, and yeah
-        let r_pos = vec.translated_vec(&self.pos.inv());
-        let r_rot = r_pos.rotated_around(&ORIGIN, &self.rot.inv());*/
+        // reverse translation, rotation, and yeah (not working)
+        //let r_pos = vec.translated_vec(&self.pos.inv());
+        //let r_rot = r_pos.rotated_around(&ORIGIN, &self.rot.inv());
 
         let sx = WIDTH as f32;
         let sy = HEIGHT as f32;
 
         //let dz = c.distance(vec);
+        //let dz = zp.abs();
 
         //let bx = (dx * sx) / dz * self.focal;
         //let by = (dy * sy) / dz * self.focal;
 
-        let bx = e.z / dz * dx + e.x;
-        let by = e.z / dz * dy + e.y;
+        let bx = e.z / dz * dx * self.focal_length;
+        let by = e.z / dz * dy * self.focal_length;
 
-        (
-            Vec2 {
-                x: (WIDTH as f32 / 2. + bx * self.sc).floor() as i32,
-                y: (HEIGHT as f32 / 2. + by * self.sc).floor() as i32,
-            },
-            dz, //c.distance(vec),
-        )
+        let out = Vec2::new(
+            (WIDTH as f32 / 2. + bx * self.sc).floor() as i32,
+            (HEIGHT as f32 / 2. + by * self.sc).floor() as i32,
+        );
+
+        (out, c.distance(vec))
     }
 }
 
@@ -440,7 +464,7 @@ impl Vec2 {
     }
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 struct Vec3 {
     x: f32,
     y: f32,
@@ -467,6 +491,10 @@ impl Vec3 {
 
     fn inv(&self) -> Self {
         Self::new(-self.x, -self.y, -self.z)
+    }
+
+    fn diff(&self, other: &Vec3) -> Self {
+        Self::new(other.x - self.x, other.y - self.y, other.z - self.z)
     }
 
     fn translated(&self, x: f32, y: f32, z: f32) -> Self {
@@ -593,6 +621,15 @@ impl Tri {
         }
     }
 
+    fn translated_vec(&self, vec: &Vec3) -> Self {
+        Self {
+            a: self.a.translated_vec(vec),
+            b: self.b.translated_vec(vec),
+            c: self.c.translated_vec(vec),
+            col: self.col,
+        }
+    }
+
     fn rotated_around(&self, origin: &Vec3, rot: &Vec3) -> Self {
         Self::new(
             self.a.rotated_around(origin, rot),
@@ -614,6 +651,10 @@ impl Prim {
 
     fn translated(&self, x: f32, y: f32, z: f32) -> Self {
         Prim::new(self.tris.iter().map(|t| t.translated(x, y, z)).collect())
+    }
+
+    fn translated_vec(&self, vec: &Vec3) -> Self {
+        Prim::new(self.tris.iter().map(|t| t.translated_vec(vec)).collect())
     }
 
     fn rotated_around(&self, origin: &Vec3, rot: &Vec3) -> Self {
@@ -661,7 +702,7 @@ impl World {
             c: 0.,
             cols: colarray,
             cam: Camera::new(
-                Vec3::new(0., 0., -2.),                           //Vec3::new(0., 1.5, -2.),
+                Vec3::new(0., 0., -10.),                          //Vec3::new(0., 1.5, -2.),
                 Vec3::new(radians(0.), radians(0.), radians(0.)), //Vec3::new(radians(-30.), radians(30.), 0.),
                 Vec3::new_i(0, 0, 200),
                 1.,
@@ -671,9 +712,9 @@ impl World {
 
     fn update(&mut self) {
         self.c += 1.;
-        if self.c == 360. {
+        /*if self.c == 360. {
             self.c = 0.
-        }
+        }*/
 
         //self.cam.translate_mut(0.003, 0.002, 0.); //y: 0.002
     }
@@ -681,38 +722,16 @@ impl World {
     fn draw(&self, frame: &mut [u8]) {
         let mut r = Canvas::new(&self.cam, ZBuffer::new());
 
-        /*r.render_point(
-            &Vec3::new_i(0, 0, 0).rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
-        );
-        r.render_point(
-            &Vec3::new_i(1, 0, 0).rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
-        );
-        r.render_point(
-            &Vec3::new_i(0, 1, 0).rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
-        );
-        r.render_point(
-            &Vec3::new_i(1, 1, 0).rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
-        );
-        r.render_point(
-            &Vec3::new_i(0, 0, 1).rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
-        );
-        r.render_point(
-            &Vec3::new_i(1, 0, 1).rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
-        );
-        r.render_point(
-            &Vec3::new_i(0, 1, 1).rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
-        );
-        r.render_point(
-            &Vec3::new_i(1, 1, 1).rotated_around(&ORIGIN, &Vec3::new(0., radians(self.c), 0.)),
-        );*/
-        //kill();
-        //std::process::exit(0);
+        /*let trans_fac = self.cam.pos.inv();
+        let rot_fac = self.cam.rot;
 
-        let rot_fac = if self.c < 180. {
-            Vec3::new(0., radians(self.c), 0.)
-        } else {
-            ORIGIN
-        };
+        println!("{:?}, {:?}", trans_fac, rot_fac);*/
+
+        let rot_fac = Vec3::new(
+            radians(self.c),
+            radians(self.c * 0.8),
+            0., //radians(self.c * 0.6),
+        );
 
         r.render_prim(&get_cube().rotated_around(&ORIGIN, &rot_fac));
         r.render_prim(
@@ -735,7 +754,15 @@ impl World {
                 .translated(4., 4., 0.)
                 .rotated_around(&ORIGIN, &rot_fac),
         );
-        r.render_line(&Line::new(
+
+        /*let (correct_origin, _oz) = self.cam.projected_old(&ORIGIN);
+        r.zbuffer.force_set(
+            correct_origin.x,
+            correct_origin.y,
+            CZ::new(BLACK, NEG_INFINITY),
+        );*/
+
+        /*r.render_line(&Line::new(
             Vec3::new_i(-AXIS_LEN, 0, 0),
             Vec3::new_i(AXIS_LEN, 0, 0),
             GREEN,
@@ -749,7 +776,7 @@ impl World {
             Vec3::new_i(0, 0, -AXIS_LEN),
             Vec3::new_i(0, 0, AXIS_LEN),
             BLUE,
-        ));
+        ));*/
         /*r.render_tri(Tri::new(
             Vec3::new(-100., -10., 0.),
             Vec3::new(-100., -10., 100.),
@@ -803,7 +830,7 @@ fn main() -> Result<(), Error> {
     event_loop.run(move |event, _, control_flow| {
         // Draw the current frame
         if let Event::RedrawRequested(_) = event {
-            println!("FPS: {:?}", 1000 / last_frame_time.elapsed().as_millis());
+            println!("FPS: {}", 1000 / last_frame_time.elapsed().as_millis());
             last_frame_time = Instant::now();
 
             world.draw(pixels.get_frame());
@@ -877,10 +904,10 @@ fn main() -> Result<(), Error> {
                 world.cam.rot.z += radians(-10.) * ROT_SCALE;
             }
             if input.key_held(VirtualKeyCode::Minus) {
-                world.cam.focal -= 0.005;
+                world.cam.focal_length -= 0.005;
             }
             if input.key_held(VirtualKeyCode::Equals) {
-                world.cam.focal += 0.005;
+                world.cam.focal_length += 0.005;
             }
 
             // Rotation clipping
